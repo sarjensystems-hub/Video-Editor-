@@ -23,7 +23,8 @@ const fraunces = Fraunces({
   style: ["italic", "normal"],
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://studio.example.com";
+const configuredSiteUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+const SITE_URL = configuredSiteUrl && configuredSiteUrl.length > 0 ? configuredSiteUrl : "https://studio.example.com";
 
 /**
  * There is no public site to optimise for, so this is the minimum a browser
