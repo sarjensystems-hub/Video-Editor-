@@ -98,12 +98,14 @@ export interface CreativeRenderAdapter {
   stopDetached(handle: CreativeDetachedRenderHandle): Promise<void>;
 }
 
+const CREATIVE_RENDER_SNAPSHOTS_BUCKET = "creative-render-snapshots";
+
 function snapshotMetadataUrl() {
   const deploymentId = process.env.VERCEL_DEPLOYMENT_ID;
-  const publicBase = process.env.R2_PUBLIC_BASE_URL?.replace(/\/$/, "");
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
   if (!deploymentId) throw new Error("VERCEL_DEPLOYMENT_ID is unavailable");
-  if (!publicBase) throw new Error("R2_PUBLIC_BASE_URL is unavailable");
-  return `${publicBase}/creative-render-snapshots/${deploymentId}.json`;
+  if (!supabaseUrl) throw new Error("NEXT_PUBLIC_SUPABASE_URL is unavailable");
+  return `${supabaseUrl}/storage/v1/object/public/${CREATIVE_RENDER_SNAPSHOTS_BUCKET}/${deploymentId}.json`;
 }
 
 function positiveIntFromEnv(name: string, fallback: number): number {

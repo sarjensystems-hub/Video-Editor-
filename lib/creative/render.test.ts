@@ -22,7 +22,7 @@ vi.mock("@vercel/sandbox", () => ({
 }));
 vi.mock("sharp", () => ({ default: (...args: unknown[]) => sharpFactory(...args) }));
 
-const SNAPSHOT_URL = "https://cdn.example.com/creative-render-snapshots/deployment-1.json";
+const SNAPSHOT_URL = "https://cdn.example.com/storage/v1/object/public/creative-render-snapshots/deployment-1.json";
 
 function pngBytes(marker: number) {
   return new Uint8Array([0x89, 0x50, 0x4e, 0x47, marker]);
@@ -46,7 +46,7 @@ describe("creative still-frame render boundary", () => {
     sharpFactory.mockReset();
 
     process.env.VERCEL_DEPLOYMENT_ID = "deployment-1";
-    process.env.R2_PUBLIC_BASE_URL = "https://cdn.example.com/";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://cdn.example.com/";
 
     vi.stubGlobal(
       "fetch",

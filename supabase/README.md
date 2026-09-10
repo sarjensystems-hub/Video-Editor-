@@ -13,6 +13,9 @@ reference tables the earlier ones create.
 6. `add_mcp_oauth.sql` — the three tables that let ChatGPT and Claude sign in.
 7. `add_mcp_refresh_tokens.sql` — keeps those connections alive past an hour.
 8. `add_video_generations_mcp_oauth.sql` — lets video jobs be started over MCP.
+9. `add_storage_buckets.sql` — the two Supabase Storage buckets this
+   deployment uses in place of Cloudflare R2: `article-images` for media, and
+   `creative-render-snapshots` for the render-cache metadata.
 
 Every file is safe to re-run: they all use `if not exists`, so a partial run can
 simply be repeated from the top.
