@@ -1,0 +1,346 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Design Tokens — Claude-inspired warm palette
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Page canvas */
+  --bg:          #ffffff;
+  --bg-subtle:   #faf8f5;
+  --bg-muted:    #f5f1ec;
+
+  /* Sidebar (warm cream — Claude light) */
+  --wall:        #f0ede8;
+  --wall-hover:  #e8e4de;
+  --wall-active: #dedad3;
+  --wall-edge:   #dedad3;
+
+  /* Surfaces (cards, panels) */
+  --surface:     #ffffff;
+  --surface-2:   #faf8f5;
+
+  /* Borders */
+  --edge:        #e8e3db;
+  --edge-faint:  #f0ede8;
+
+  /* Content text */
+  --ink:         #1a1715;
+  --ink-muted:   #6b6560;
+  --ink-faint:   #a8a39d;
+
+  /* Sidebar text */
+  --chalk:       #2d2a27;
+  --chalk-dim:   #7c7870;
+
+  /* Accent — brand orange */
+  --fire:        #f97316;
+  --fire-hover:  #ea6c0a;
+  --fire-wash:   rgba(249, 115, 22, 0.08);
+
+  /* Form fields — distinct from --surface so an input reads as inset */
+  --field:       #ffffff;
+  --field-edge:  #d8d2c8;
+
+  /* Status. Each colour pairs with a wash weak enough to carry body text. */
+  --danger:      #c2410c;
+  --danger-wash: rgba(220, 38, 38, 0.08);
+  --success:     #15803d;
+  --success-wash: rgba(22, 163, 74, 0.09);
+  --warning:     #b45309;
+  --warning-wash: rgba(217, 119, 6, 0.10);
+
+  /* Editor selection. Deliberately not --fire: a selection ring competing with
+     the brand accent makes neither readable on a busy canvas. */
+  --select:      #2563eb;
+  --select-wash: rgba(37, 99, 235, 0.10);
+  --select-ink:  #ffffff;
+
+  /* The editor canvas is its own dark room in both themes — artwork is judged
+     against a neutral ground, not against the app chrome. */
+  --stage:       #09090b;
+  --stage-frame: #1c1917;
+
+  /* Layered surfaces above the page: sheets, popovers, dialogs. */
+  --overlay:     rgba(26, 23, 21, 0.42);
+  --sheet:       #ffffff;
+  --sheet-grip:  #d8d2c8;
+
+  --shadow-sm:   0 1px 2px rgba(26, 23, 21, 0.06);
+  --shadow-md:   0 6px 20px rgba(26, 23, 21, 0.09);
+  --shadow-lg:   0 22px 60px rgba(26, 23, 21, 0.16);
+}
+
+html.dark {
+  /* Page canvas */
+  --bg:          #141211;
+  --bg-subtle:   #1a1917;
+  --bg-muted:    #211f1d;
+
+  /* Sidebar (warm dark — Claude dark) */
+  --wall:        #1e1c1a;
+  --wall-hover:  #252321;
+  --wall-active: #2d2b28;
+  --wall-edge:   #2d2b28;
+
+  /* Surfaces */
+  --surface:     #1e1c1a;
+  --surface-2:   #252321;
+
+  /* Borders */
+  --edge:        #38352f;
+  --edge-faint:  #2d2b28;
+
+  /* Content text */
+  --ink:         #ede9e3;
+  --ink-muted:   #9c9590;
+  --ink-faint:   #6b6560;
+
+  /* Sidebar text */
+  --chalk:       #ede9e3;
+  --chalk-dim:   #7c7870;
+
+  /* Accent */
+  --fire:        #f97316;
+  --fire-hover:  #fb923c;
+  --fire-wash:   rgba(249, 115, 22, 0.12);
+
+  /* Fields sit below the surface in dark, the inverse of light. */
+  --field:       #171614;
+  --field-edge:  #413d37;
+
+  /* Status colours lighten in dark so they clear contrast against --surface;
+     the same hex that reads well on white goes muddy on #1e1c1a. */
+  --danger:      #fca5a5;
+  --danger-wash: rgba(248, 113, 113, 0.15);
+  --success:     #86efac;
+  --success-wash: rgba(74, 222, 128, 0.15);
+  --warning:     #fcd34d;
+  --warning-wash: rgba(251, 191, 36, 0.15);
+
+  --select:      #60a5fa;
+  --select-wash: rgba(96, 165, 250, 0.18);
+  --select-ink:  #0b1220;
+
+  --stage:       #09090b;
+  --stage-frame: #100f0e;
+
+  --overlay:     rgba(0, 0, 0, 0.62);
+  --sheet:       #211f1d;
+  --sheet-grip:  #413d37;
+
+  /* Shadows barely register on dark ground; borders do the separating instead,
+     so these stay subtle rather than being scaled up to compensate. */
+  --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md:   0 6px 20px rgba(0, 0, 0, 0.45);
+  --shadow-lg:   0 22px 60px rgba(0, 0, 0, 0.55);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Base reset — wire design tokens to Tailwind's gray palette for dark mode
+   ───────────────────────────────────────────────────────────────────────────── */
+
+html.dark body {
+  background-color: var(--bg);
+  color: var(--ink);
+}
+
+/* ── Override Tailwind utility classes in dark mode ── */
+html.dark .bg-white          { background-color: var(--surface); }
+html.dark .bg-gray-50        { background-color: var(--bg-subtle); }
+html.dark .bg-gray-100       { background-color: var(--bg-muted); }
+html.dark .border-gray-50    { border-color: var(--edge-faint); }
+html.dark .border-gray-100   { border-color: var(--edge-faint); }
+html.dark .border-gray-200   { border-color: var(--edge); }
+html.dark .text-gray-900     { color: var(--ink); }
+html.dark .text-gray-800     { color: var(--ink); }
+html.dark .text-gray-700     { color: var(--ink-muted); }
+html.dark .text-gray-600     { color: var(--ink-muted); }
+html.dark .text-gray-500     { color: var(--ink-muted); }
+html.dark .text-gray-400     { color: var(--ink-faint); }
+html.dark .divide-gray-100 > * + * { border-color: var(--edge-faint); }
+html.dark .divide-gray-200 > * + * { border-color: var(--edge); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Component classes
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@layer components {
+  /* Primary button */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2
+           bg-orange-500 text-white font-semibold rounded-xl
+           px-4 py-2.5 text-sm
+           hover:bg-orange-600
+           active:scale-[0.96]
+           hover:shadow-lg hover:shadow-orange-500/20
+           transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  /* Ghost / secondary button */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2
+           bg-transparent font-medium rounded-xl
+           px-4 py-2.5 text-sm border
+           transition-all duration-150
+           active:scale-[0.96];
+    color: var(--ink-muted);
+    border-color: var(--edge);
+  }
+  .btn-ghost:hover {
+    background-color: var(--bg-subtle);
+    color: var(--ink);
+  }
+
+  /* Danger button */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2
+           bg-red-50 text-red-600 font-medium rounded-xl
+           px-4 py-2.5 text-sm border border-red-100
+           hover:bg-red-100
+           active:scale-[0.96]
+           transition-all duration-150;
+  }
+
+  /* Input field */
+  .input {
+    @apply block w-full rounded-xl border px-4 py-2.5 text-sm
+           focus:outline-none focus:ring-2 focus:ring-orange-500/30
+           transition-shadow;
+    background-color: var(--surface);
+    border-color: var(--edge);
+    color: var(--ink);
+  }
+  .input::placeholder { color: var(--ink-faint); }
+
+  /* Card */
+  .card {
+    @apply rounded-2xl border;
+    background-color: var(--surface);
+    border-color: var(--edge);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Homepage animations
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@layer utilities {
+  .font-serif-italic {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-style: italic;
+    font-weight: 300;
+  }
+}
+
+@keyframes ss-line-rise {
+  0%   { transform: translateY(110%); opacity: 0; }
+  100% { transform: translateY(0);    opacity: 1; }
+}
+@keyframes ss-fade-up {
+  0%   { transform: translateY(24px); opacity: 0; }
+  100% { transform: translateY(0);    opacity: 1; }
+}
+@keyframes ss-orbit {
+  0%   { transform: translate(0, 0) }
+  25%  { transform: translate(14px, -10px) }
+  50%  { transform: translate(0, -22px) }
+  75%  { transform: translate(-14px, -10px) }
+  100% { transform: translate(0, 0) }
+}
+@keyframes ss-breath {
+  0%, 100% { transform: scale(1);    opacity: 0.55 }
+  50%      { transform: scale(1.08); opacity: 0.85 }
+}
+@keyframes ss-marquee {
+  0%   { transform: translateX(0) }
+  100% { transform: translateX(-50%) }
+}
+@keyframes ss-underline {
+  0%   { transform: scaleX(0); transform-origin: left }
+  100% { transform: scaleX(1); transform-origin: left }
+}
+
+.ss-line-mask     { display: inline-block; overflow: hidden; padding-bottom: 0.12em; }
+.ss-line-rise     { display: inline-block; transform: translateY(110%); opacity: 0; animation: ss-line-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.ss-fade-up       { opacity: 0; animation: ss-fade-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.ss-orbit         { animation: ss-orbit 14s ease-in-out infinite; }
+.ss-breath        { animation: ss-breath 6s ease-in-out infinite; }
+.ss-marquee-track { display: flex; width: max-content; animation: ss-marquee 38s linear infinite; }
+.ss-underline     { display: inline-block; transform: scaleX(0); animation: ss-underline 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.9s forwards; }
+
+/* IntersectionObserver-driven reveal */
+.ss-reveal       { opacity: 0; transform: translateY(28px); transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1), transform 0.9s cubic-bezier(0.22, 1, 0.36, 1); }
+.ss-reveal.in    { opacity: 1; transform: translateY(0); }
+
+/* Magnetic CTA */
+.ss-magnet:hover { transform: translateY(-2px); }
+.ss-magnet       { transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease; }
+
+/* Subtle grain overlay */
+.ss-grain::before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(26,23,21,0.04) 1px, transparent 1px);
+  background-size: 3px 3px;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ss-line-rise, .ss-fade-up, .ss-underline,
+  .ss-orbit, .ss-breath, .ss-marquee-track {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+  .ss-reveal { opacity: 1; transform: none; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Timeline scrubber — a range input with a thumb a finger can actually catch
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.scrubber {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;             /* the touch target; the track is drawn thinner */
+  background: transparent;
+  cursor: pointer;
+}
+.scrubber:focus-visible { outline: 2px solid var(--fire); outline-offset: 2px; border-radius: 999px; }
+
+.scrubber::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--edge);
+}
+.scrubber::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--edge);
+}
+
+.scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;          /* centres an 18px thumb on a 6px track */
+  border-radius: 999px;
+  background: var(--fire);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.scrubber::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--fire);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-sm);
+}

@@ -1,0 +1,48 @@
+{
+  "name": "studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "prebuild": "vitest run && tsc --noEmit",
+    "build": "next build",
+    "postbuild": "node scripts/create-creative-render-snapshot.mjs",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1050.0",
+    "@remotion/vercel": "4.0.517",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.47.10",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/nodemailer": "^8.0.0",
+    "@vercel/sandbox": "3.1.0",
+    "dodopayments": "^2.28.2",
+    "jszip": "^3.10.1",
+    "lucide-react": "^1.8.0",
+    "mammoth": "^1.12.0",
+    "next": "^15.3.0",
+    "nodemailer": "^8.0.5",
+    "pdf-parse": "^2.4.5",
+    "puppeteer-core": "^23.11.1",
+    "react": "^18",
+    "react-dom": "^18",
+    "remotion": "4.0.517",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.517",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "eslint": "^9",
+    "eslint-config-next": "^15.3.0",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5",
+    "vitest": "^4.1.6"
+  }
+}
