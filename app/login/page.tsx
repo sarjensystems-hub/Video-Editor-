@@ -3,8 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Zap } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import AuthShell from "@/components/AuthShell";
 
 function safePostLoginRedirect(): string {
   if (typeof window === "undefined") return "/dashboard";
@@ -19,6 +20,7 @@ export default function LoginPage() {
 
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [loading, setLoading]   = useState(false);
 
@@ -40,83 +42,82 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f4f4f8] dark:bg-[#0f0f17] flex items-center justify-center px-4">
-      <div className="bg-white dark:bg-[#16161f] rounded-2xl shadow-sm border border-gray-200 dark:border-white/8 w-full max-w-md p-8">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2.5 justify-center mb-3">
-            <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-white" strokeWidth={2.5} />
-            </div>
-            <span className="font-display text-xl font-bold text-gray-900 dark:text-white tracking-tight">
-              Studio
-            </span>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in to pick up where you left off."
+      footer={
+        <>
+          New here?{" "}
+          <Link href="/signup" className="font-semibold text-orange-500 hover:text-orange-600">
+            Create an account
           </Link>
-          <p className="text-gray-500 dark:text-white/40 text-sm">Welcome back — sign in to your account</p>
+        </>
+      }
+    >
+      <form onSubmit={handleLogin} className="space-y-5">
+        <div>
+          <label htmlFor="email" className="mb-1.5 block text-sm font-medium" style={{ color: "var(--ink)" }}>
+            Email address
+          </label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="input"
+          />
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleLogin} className="space-y-5">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-white/60 mb-1.5">
-              Email address
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label htmlFor="password" className="block text-sm font-medium" style={{ color: "var(--ink)" }}>
+              Password
             </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white bg-white dark:bg-white/5 placeholder:text-gray-300 dark:placeholder:text-white/20 outline-none focus:border-orange-400 dark:focus:border-orange-500/50 transition-colors"
-            />
+            <Link href="/forgot-password" className="text-xs font-medium text-orange-500 hover:text-orange-600">
+              Forgot password?
+            </Link>
           </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-white/60">
-                Password
-              </label>
-              <Link
-                href="/forgot-password"
-                className="text-xs text-orange-500 hover:text-orange-600 hover:underline font-medium"
-              >
-                Forgot password?
-              </Link>
-            </div>
+          <div className="relative">
             <input
               id="password"
-              type="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white bg-white dark:bg-white/5 placeholder:text-gray-300 dark:placeholder:text-white/20 outline-none focus:border-orange-400 dark:focus:border-orange-500/50 transition-colors"
+              className="input pr-11"
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 transition-colors hover:text-orange-500"
+              style={{ color: "var(--ink-faint)" }}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
+        </div>
 
-          {error && (
-            <div className="bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 text-red-600 dark:text-red-400 rounded-xl px-4 py-3 text-sm">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn w-full"
+        {error && (
+          <div
+            role="alert"
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{ backgroundColor: "var(--danger-wash)", color: "var(--danger)" }}
           >
-            {loading ? "Signing in…" : "Sign In"}
-          </button>
-        </form>
+            {error}
+          </div>
+        )}
 
-        <p className="text-center text-sm text-gray-400 dark:text-white/30 mt-6">
-          Don&apos;t have an account?{" "}
-          <Link href="/signup" className="text-orange-500 font-semibold hover:underline">
-            Start free
-          </Link>
-        </p>
-      </div>
-    </div>
+        <button type="submit" disabled={loading} className="btn w-full">
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

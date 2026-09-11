@@ -6,13 +6,16 @@
  */
 import { useState } from "react";
 import Link from "next/link";
+import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import AuthShell from "@/components/AuthShell";
 
 export default function SignupPage() {
   const supabase = createClient();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -44,103 +47,112 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-md p-8 text-center">
-          <div className="text-5xl mb-4">📬</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Check your email
-          </h2>
-          <p className="text-gray-500">
-            We sent a confirmation link to <strong>{email}</strong>. Click it to
-            activate your account.
-          </p>
-          <Link
-            href="/login"
-            className="mt-6 inline-block text-brand-600 font-medium hover:underline"
-          >
-            Back to Sign In
+      <AuthShell
+        title="Check your email"
+        subtitle="Your account is one click away."
+        footer={
+          <Link href="/login" className="font-semibold text-orange-500 hover:text-orange-600">
+            Back to sign in
           </Link>
+        }
+      >
+        <div
+          className="card flex flex-col items-center p-8 text-center"
+          style={{ backgroundColor: "var(--surface-2)" }}
+        >
+          <span
+            className="flex h-12 w-12 items-center justify-center rounded-full"
+            style={{ backgroundColor: "var(--fire-wash)" }}
+          >
+            <MailCheck className="h-6 w-6 text-orange-500" />
+          </span>
+          <p className="mt-4 text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
+            We sent a confirmation link to{" "}
+            <strong style={{ color: "var(--ink)" }}>{email}</strong>. Click it to activate your
+            account.
+          </p>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-md p-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <Link href="/" className="text-2xl font-extrabold text-brand-700">
-            Studio
+    <AuthShell
+      title="Create your account"
+      subtitle="Free to start — no card required."
+      footer={
+        <>
+          Already have an account?{" "}
+          <Link href="/login" className="font-semibold text-orange-500 hover:text-orange-600">
+            Sign in
           </Link>
-          <p className="text-gray-500 mt-2">Create your free account</p>
+        </>
+      }
+    >
+      <form onSubmit={handleSignup} className="space-y-5">
+        <div>
+          <label htmlFor="email" className="mb-1.5 block text-sm font-medium" style={{ color: "var(--ink)" }}>
+            Email address
+          </label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="input"
+          />
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSignup} className="space-y-5">
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Email address
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Password
-            </label>
+        <div>
+          <label htmlFor="password" className="mb-1.5 block text-sm font-medium" style={{ color: "var(--ink)" }}>
+            Password
+          </label>
+          <div className="relative">
             <input
               id="password"
-              type="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
               required
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="At least 8 characters"
+              className="input pr-11"
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 transition-colors hover:text-orange-500"
+              style={{ color: "var(--ink-faint)" }}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
+        </div>
 
-          {/* Error message */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        {error && (
+          <div
+            role="alert"
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{ backgroundColor: "var(--danger-wash)", color: "var(--danger)" }}
           >
-            {loading ? "Creating account…" : "Create Account"}
-          </button>
-        </form>
+            {error}
+          </div>
+        )}
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Already have an account?{" "}
-          <Link
-            href="/login"
-            className="text-brand-600 font-medium hover:underline"
-          >
-            Sign in
-          </Link>
+        <button type="submit" disabled={loading} className="btn w-full">
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          {loading ? "Creating account…" : "Create account"}
+        </button>
+
+        <p className="text-center text-xs leading-relaxed" style={{ color: "var(--ink-faint)" }}>
+          By creating an account you agree to our Terms of Service and Privacy Policy.
         </p>
-      </div>
-    </div>
+      </form>
+    </AuthShell>
   );
 }
