@@ -2,15 +2,22 @@
 
 /**
  * Signup page — new users create their account here.
- * After signing up, Supabase sends a confirmation email.
+ *
+ * With email confirmation switched off in the Supabase project, `signUp`
+ * returns a session straight away and the user lands on the dashboard with no
+ * round trip through their inbox. The confirmation screen below is the
+ * fallback for a project that still has confirmation on, so the page keeps
+ * working either way rather than stranding the user on a dead form.
  */
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import AuthShell from "@/components/AuthShell";
 
 export default function SignupPage() {
+  const router = useRouter();
   const supabase = createClient();
 
   const [email, setEmail] = useState("");
@@ -25,11 +32,11 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        // After email confirmation, redirect user to the dashboard
+        // Only reached when the project still requires confirmation.
         emailRedirectTo: `${location.origin}/auth/callback`,
       },
     });
@@ -40,7 +47,14 @@ export default function SignupPage() {
       return;
     }
 
-    // Show confirmation message
+    // Confirmation is off: the account is live and signed in already.
+    if (data.session) {
+      router.push("/dashboard");
+      router.refresh();
+      return;
+    }
+
+    // Confirmation is still on — tell them to go and click the link.
     setSuccess(true);
     setLoading(false);
   }

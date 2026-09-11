@@ -76,6 +76,12 @@ In Supabase under **Authentication → URL Configuration**, set the site URL to
 the same address as `NEXT_PUBLIC_APP_URL` and add `<that address>/auth/callback`
 to the redirect list. Sign-in fails without this.
 
+Then, under **Authentication → Sign In / Providers → Email**, turn **Confirm
+email** *off*. Signing up then creates the account and signs the person in on
+the spot, with no confirmation link to go and find. Leave it on only if you
+want the inbox round trip — `/signup` handles both, showing a "check your
+email" screen when the project still asks for confirmation.
+
 ### 5. Create the accounts
 
 Visit `/signup` and create one account per person. There is no invite flow and
