@@ -3,10 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveSiteId } from "@/lib/active-site";
 import { importBasicSvg, importCreativeDocumentJson } from "@/lib/creative/import";
 import { createRuntimeCreativeProject } from "@/lib/creative/project-runtime";
+import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -32,3 +33,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error), warnings: imported.warnings }, { status: 400 });
   }
 }
+
+/* Generation on this route bills the signed-in account's own OpenRouter key. */
+export const POST = withOpenRouterKeyScope(handlePOST);

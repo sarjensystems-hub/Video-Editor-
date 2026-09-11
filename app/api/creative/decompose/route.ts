@@ -9,11 +9,12 @@ import { isTrustedMediaUrl } from "@/lib/creative/media-url";
 import { getRuntimeCreativeProject, registerRuntimeCreativeAsset } from "@/lib/creative/project-runtime";
 import { InsufficientCreditsError, withCredits } from "@/lib/creative/metering";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
+import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -116,3 +117,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: decomposeError instanceof Error ? decomposeError.message : String(decomposeError) }, { status: 500 });
   }
 }
+
+/* Generation on this route bills the signed-in account's own OpenRouter key. */
+export const POST = withOpenRouterKeyScope(handlePOST);

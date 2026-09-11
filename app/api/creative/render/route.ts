@@ -11,6 +11,7 @@ import { InsufficientCreditsError, chargeCreativeRenderCredits, refundCreativeRe
 import { getCreativeDurationMs } from "@/lib/creative/evaluate";
 import { extractSceneDocument, findSceneExportWindow } from "@/lib/creative/scene-export";
 import { validateCreativeDocument } from "@/lib/creative/validate";
+import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
 
 export const runtime = "nodejs";
 
@@ -66,7 +67,7 @@ export async function GET(request: Request) {
   return NextResponse.json({ jobs });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -214,3 +215,6 @@ export async function POST(request: Request) {
     { status: 202 },
   );
 }
+
+/* Generation on this route bills the signed-in account's own OpenRouter key. */
+export const POST = withOpenRouterKeyScope(handlePOST);

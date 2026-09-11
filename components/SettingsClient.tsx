@@ -3,14 +3,17 @@
 import ConnectedApps from "@/components/ConnectedApps";
 
 import { useState, useEffect, useTransition } from "react";
-import { Moon, Sun, User, Check, Mail, Globe, Trash2, AlertTriangle } from "lucide-react";
+import { Moon, Sun, User, Check, Mail, Globe, Trash2, AlertTriangle, KeyRound } from "lucide-react";
 import { setTheme } from "@/app/actions/theme";
 import { sendPasswordReset } from "@/app/actions/auth";
 import { deleteSite } from "@/app/actions/sites";
 import { useRouter } from "next/navigation";
 import { cn } from "@/components/ui/cn";
+import ApiKeysCard from "@/components/settings/ApiKeysCard";
+import type { OpenRouterKeyStatus } from "@/lib/openrouter-key";
 
 const TABS = [
+  { id: "keys",       label: "API keys",   icon: KeyRound },
   { id: "appearance", label: "Appearance", icon: Sun },
   { id: "account",    label: "Account",    icon: User },
   { id: "websites",   label: "Websites",   icon: Globe },
@@ -24,11 +27,14 @@ interface Props {
   email: string;
   sites: Site[];
   activeSiteId: string | null;
+  keyStatus: OpenRouterKeyStatus;
 }
 
-export default function SettingsClient({ email, sites, activeSiteId }: Props) {
+export default function SettingsClient({ email, sites, activeSiteId, keyStatus }: Props) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabId>("appearance");
+  // An account with no key of its own cannot generate anything, so that is the
+  // tab worth opening on until one is saved.
+  const [activeTab, setActiveTab] = useState<TabId>(keyStatus.configured ? "appearance" : "keys");
   const [isDark, setIsDark] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [pwEmailSent, setPwEmailSent] = useState(false);
@@ -93,6 +99,8 @@ export default function SettingsClient({ email, sites, activeSiteId }: Props) {
       </nav>
 
       <div className="min-w-0 flex-1">
+        {activeTab === "keys" && <ApiKeysCard initialStatus={keyStatus} />}
+
         {activeTab === "appearance" && (
           <Card title="Appearance" hint="Choose how Studio looks. Saved automatically.">
             <div className="flex flex-wrap items-center gap-3">

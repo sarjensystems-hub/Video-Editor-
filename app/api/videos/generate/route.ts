@@ -31,11 +31,12 @@ import {
   type VideoCharacterRef,
 } from "@/lib/video-gen";
 import { submitVideoJob } from "@/lib/video-gen-api";
+import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
 
 export const maxDuration = 60;
 
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -127,3 +128,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ job: row });
 }
+
+/* Generation on this route bills the signed-in account's own OpenRouter key. */
+export const POST = withOpenRouterKeyScope(handlePOST);

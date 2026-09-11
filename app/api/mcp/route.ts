@@ -2,7 +2,8 @@ import { handleMcpMessage } from "@/lib/mcp-server/mcp";
 import { getMcpUserVideoJob, startMcpUserVideoJob } from "@/lib/mcp-server/user-runtime";
 import { handleCreativeMcpTool, CREATIVE_MCP_TOOL_NAMES, type CreativeMcpToolName } from "@/lib/creative/mcp-runtime";
 import { uploadMcpUserImage } from "@/lib/mcp-image-upload";
-import { authenticateMcpBearer } from "@/lib/mcp-oauth";
+import { authenticateMcpBearer, type McpUserContext } from "@/lib/mcp-oauth";
+import { withUserOpenRouterKey } from "@/lib/openrouter-key";
 import { oauthChallenge } from "@/lib/mcp-oauth-core";
 
 export const runtime = "nodejs";
@@ -42,6 +43,14 @@ export async function POST(request: Request) {
   const context = await authenticateMcpBearer(authorization);
   if (!context) return unauthorized(request, Boolean(authorization));
 
+  // Every tool call — including the rendering that continues after this
+  // response — generates on the connected account's own OpenRouter key.
+  return withUserOpenRouterKey(context.supabase, context.user.id, () =>
+    handleAuthenticatedPost(request, context),
+  );
+}
+
+async function handleAuthenticatedPost(request: Request, context: McpUserContext): Promise<Response> {
   const creativeNames = new Set<string>(CREATIVE_MCP_TOOL_NAMES);
   const deps = {
     start: (input: unknown) => startMcpUserVideoJob(context, input),

@@ -1,13 +1,14 @@
 /**
  * OpenRouter API helper
  *
- * Uses Studio's own API key — users never need to provide one.
- * All AI calls go through this single function.
+ * Uses the API key belonging to whoever made the request — see
+ * lib/openrouter-key.ts. All AI calls go through this single function.
  *
  * Primary model: google/gemini-2.5-flash — fast, large context, high rate limits.
  * Fallback model: google/gemini-2.0-flash-lite-001 — used automatically on 429.
  */
 
+import { requireOpenRouterKey } from "./openrouter-key";
 const PRIMARY_MODEL  = "google/gemini-2.5-flash";
 const FALLBACK_MODEL = "google/gemini-2.0-flash-lite-001";
 
@@ -47,8 +48,7 @@ async function runWithFallback(
   jsonMode: boolean,
   temperature?: number,
 ): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured. Add it to Vercel environment variables.");
+  const apiKey = await requireOpenRouterKey();
 
   // Try primary model; on 429 wait 2 s and retry once; then fall back to secondary model
   const delays = [2000, 4000];
@@ -123,8 +123,7 @@ export async function fetchVisionResponse(
   maxTokens = 8000,
   model = "anthropic/claude-haiku-4-5",
 ): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured. Add it to Vercel environment variables.");
+  const apiKey = await requireOpenRouterKey();
 
   const delays = [2000, 4000, 8000];
   let res: Response | null = null;

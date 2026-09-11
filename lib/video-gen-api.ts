@@ -22,8 +22,9 @@
  *
  * Client-safe constants/types live in lib/video-gen.ts — import those from
  * Client Components, import this module only from server code (route
- * handlers), since it reads OPENROUTER_API_KEY and uses Buffer.
+ * handlers), since it resolves the request's OpenRouter key and uses Buffer.
  */
+import { requireOpenRouterKey } from "@/lib/openrouter-key";
 import type { VideoAspectRatio, VideoResolution, VideoJobState, VideoCharacterRef } from "@/lib/video-gen";
 
 export const DEFAULT_VIDEO_MODEL = "bytedance/seedance-2.0-fast";
@@ -43,15 +44,9 @@ function buildCharacterLegend(characters: VideoCharacterRef[], instruction?: str
   return `${lines.join(" ")} ${matchInstruction}`;
 }
 
-function apiKey(): string {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error("OPENROUTER_API_KEY is not configured. Add it to Vercel environment variables.");
-  return key;
-}
-
-function authHeaders(): Record<string, string> {
+async function authHeaders(): Promise<Record<string, string>> {
   return {
-    Authorization: `Bearer ${apiKey()}`,
+    Authorization: `Bearer ${await requireOpenRouterKey()}`,
     "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "https://studio.example.com",
     "X-Title": "Studio",
   };
@@ -103,7 +98,7 @@ export async function submitVideoJob(params: SubmitVideoJobParams): Promise<Vide
 
   const res = await fetch(API_BASE, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify(body),
   });
 
@@ -130,7 +125,7 @@ export interface VideoJobStatus {
 
 /** Poll a job's current status. */
 export async function pollVideoJob(jobId: string): Promise<VideoJobStatus> {
-  const res = await fetch(`${API_BASE}/${jobId}`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/${jobId}`, { headers: await authHeaders() });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -148,7 +143,7 @@ export async function downloadVideoContent(
   jobId: string,
   index = 0,
 ): Promise<{ bytes: Buffer; contentType: string }> {
-  const res = await fetch(`${API_BASE}/${jobId}/content?index=${index}`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/${jobId}/content?index=${index}`, { headers: await authHeaders() });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

@@ -16,6 +16,9 @@ reference tables the earlier ones create.
 9. `add_storage_buckets.sql` — the two Supabase Storage buckets this
    deployment uses in place of Cloudflare R2: `article-images` for media, and
    `creative-render-snapshots` for the render-cache metadata.
+10. `add_user_api_keys.sql` — each account's own OpenRouter key, encrypted at
+   rest. Without this table nobody can save a key, and generation only works
+   if the deployment still carries a fallback `OPENROUTER_API_KEY`.
 
 Every file is safe to re-run: they all use `if not exists`, so a partial run can
 simply be repeated from the top.

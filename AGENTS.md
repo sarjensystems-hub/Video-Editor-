@@ -30,6 +30,17 @@
 - The shape is kept so real limits can be reintroduced by editing that one
   file. Do not wire in a payment provider without being asked.
 
+## Keys belong to users
+
+- Generation runs on the signed-in account's own OpenRouter key, resolved
+  per request through `lib/openrouter-key.ts`. Never read
+  `process.env.OPENROUTER_API_KEY` directly — that variable is only a
+  deployment-wide fallback, and reading it in new code silently bills the
+  deployment owner for someone else's work.
+- A new route that can reach OpenRouter must be wrapped in
+  `withOpenRouterKeyScope` (or, for MCP, run inside `withUserOpenRouterKey`),
+  or it will fall through to that fallback.
+
 ## Row-level security
 
 - Every table is owner-scoped through RLS. Do not disable it, and do not reach

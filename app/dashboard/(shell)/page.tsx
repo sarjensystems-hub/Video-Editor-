@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ArrowUpRight, Clapperboard, Film, Plus, Video } from "lucide-react";
+import { ArrowUpRight, Clapperboard, Film, KeyRound, Plus, Video } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import McpConnectCard from "@/components/dashboard/McpConnectCard";
 import { createClient } from "@/lib/supabase/server";
 import { isRenderJobRunning } from "@/lib/creative/render-job";
+import { readOpenRouterKeyStatus } from "@/lib/openrouter-key";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const [projects, videos, recentRenders] = await Promise.all([
+  const [projects, videos, recentRenders, keyStatus] = await Promise.all([
     supabase.from("creative_projects").select("*", { count: "exact", head: true }).eq("user_id", user.id),
     supabase.from("video_generations").select("*", { count: "exact", head: true }).eq("user_id", user.id),
     supabase
@@ -38,13 +39,35 @@ export default async function DashboardPage() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(4),
+    readOpenRouterKeyStatus(supabase, user.id),
   ]);
 
   const renders = recentRenders.data ?? [];
   const rendering = renders.filter((render) => isRenderJobRunning(render.status)).length;
 
+  // Nothing generates without a key, so an account that has neither its own
+  // nor a deployment fallback is told here rather than at the first failure.
+  const needsKey = !keyStatus.configured && !keyStatus.fallbackAvailable;
+
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-10">
+      {needsKey && (
+        <Link
+          href="/dashboard/settings"
+          className="mb-4 flex items-center gap-3 rounded-2xl border border-brand-400/50 bg-brand-500/10 px-4 py-3.5 transition-colors hover:bg-brand-500/15"
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-500/15 text-fire">
+            <KeyRound className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-ink">Add your OpenRouter key</span>
+            <span className="block text-xs text-ink-muted">
+              Generation runs on your own OpenRouter account. Settings → API keys.
+            </span>
+          </span>
+          <ArrowUpRight className="h-4 w-4 shrink-0 text-fire" />
+        </Link>
+      )}
       {/* ── Masthead ──
           The accent lives here and almost nowhere else on the page: one place
           that carries the brand, so every other surface can stay quiet. */}

@@ -16,12 +16,13 @@ import { createClient } from "@/lib/supabase/server";
 import { uploadAnyBytes } from "@/lib/storage";
 import type { VideoGenerationRow } from "@/lib/video-gen";
 import { pollVideoJob, downloadVideoContent } from "@/lib/video-gen-api";
+import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
 
 export const maxDuration = 60;
 
 const TERMINAL_STATES = new Set(["completed", "failed", "cancelled", "expired"]);
 
-export async function GET(
+async function handleGET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -116,3 +117,6 @@ export async function GET(
 
   return NextResponse.json({ job: updated ?? { ...current, status: upstream.status, error: errorMessage } });
 }
+
+/* Generation on this route bills the signed-in account's own OpenRouter key. */
+export const GET = withOpenRouterKeyScope(handleGET);

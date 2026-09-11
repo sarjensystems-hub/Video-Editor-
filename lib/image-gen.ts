@@ -12,6 +12,7 @@
  * through `uploadAIImage()` from `lib/storage.ts`.
  */
 
+import { getOpenRouterKey } from "./openrouter-key";
 const DEFAULT_MODEL = "google/gemini-2.5-flash-image";
 const PREMIUM_MODEL = "google/gemini-3.1-flash-image-preview";
 
@@ -51,9 +52,9 @@ interface CallOpts {
 }
 
 async function callGeminiImage({ content, aspectRatio, logTag, model = DEFAULT_MODEL }: CallOpts): Promise<AIImageResult> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = await getOpenRouterKey();
   if (!apiKey) {
-    console.warn(`[${logTag}] Missing OPENROUTER_API_KEY`);
+    console.warn(`[${logTag}] No OpenRouter key for this request — the account has not added one`);
     return null;
   }
 

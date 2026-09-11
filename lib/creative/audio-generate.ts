@@ -9,6 +9,7 @@
  * returns a raw audio bytestream rather than JSON — deliberately not the
  * chat-completions endpoint.
  */
+import { requireOpenRouterKey } from "../openrouter-key";
 import { resolveAudioContainer, audioContentTypeFor, sniffAudioContainer, wrapPcmInWav } from "./audio-format";
 import {
   DEFAULT_MUSIC_MODEL,
@@ -19,11 +20,9 @@ import {
 
 const API_BASE = "https://openrouter.ai/api/v1";
 
-function authHeaders(): Record<string, string> {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error("OPENROUTER_API_KEY is not configured. Add it to Vercel environment variables.");
+async function authHeaders(): Promise<Record<string, string>> {
   return {
-    Authorization: `Bearer ${key}`,
+    Authorization: `Bearer ${await requireOpenRouterKey()}`,
     "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "https://studio.example.com",
     "X-Title": "Studio",
   };
@@ -79,7 +78,7 @@ export async function generateSpeechBytes(input: {
 }): Promise<GeneratedAudio> {
   const request: RequestInit = {
     method: "POST",
-    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    headers: { ...(await authHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify({
       model: input.model ?? DEFAULT_SPEECH_MODEL,
       input: input.text,
@@ -182,7 +181,7 @@ export async function generateMusicBytes(input: {
 }): Promise<GeneratedAudio> {
   const response = await fetch(`${API_BASE}/chat/completions`, {
     method: "POST",
-    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    headers: { ...(await authHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify({
       model: input.model ?? DEFAULT_MUSIC_MODEL,
       modalities: ["text", "audio"],

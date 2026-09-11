@@ -25,7 +25,7 @@ with — a paid plan on a personal address is fine.
 |---|---|---|
 | **Vercel** | Paid | Hosts the app and runs the video renders. The free plan forbids commercial use and cannot render, so this one has to be paid. |
 | **Supabase** | Free | The database *and* the media storage: projects, revisions, assets, render jobs, generated images/audio/video, and the sign-ins that let ChatGPT connect. |
-| **OpenRouter** | Prepaid | Pays for everything the AI generates — text, images, speech, music, video. This is the bill that actually moves. |
+| **OpenRouter** | Prepaid | Pays for everything the AI generates — text, images, speech, music, video. This is the bill that actually moves, and **each user brings their own account**: the key is saved per user in Settings, not deployed with the app. |
 | **GitHub** | Free | Holds the code. Vercel deploys from it on every push. |
 | An email account | — | Sends password resets. Gmail works with an App Password. |
 
@@ -44,7 +44,7 @@ from here on every deployment.
 ### 2. Set up the database and storage
 
 Create a Supabase project. Then open **SQL Editor → New query** and run the
-nine files in `supabase/`, in the order given in `supabase/README.md`. Order
+ten files in `supabase/`, in the order given in `supabase/README.md`. Order
 matters — later files reference tables (and, for the last file, the storage
 buckets) the earlier ones create. The last file, `add_storage_buckets.sql`,
 creates the two public Storage buckets this deployment uses in place of
@@ -64,11 +64,17 @@ That file explains what each one is and where to get it.
 
 Two of them need generating rather than copying:
 
-- `OAUTH_TOKEN_KEY` — run
+- `API_KEY_ENCRYPTION_KEY` — run
   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-  and paste the result.
+  and paste the result. It encrypts the OpenRouter key each user saves, so
+  losing or changing it means everyone has to paste theirs again.
 - `NEXT_PUBLIC_APP_URL` — the address the app will live at, no trailing slash.
   Deploy once to find out what Vercel assigns, then set this and redeploy.
+
+`OPENROUTER_API_KEY` is deliberately **not** one of them. Leave it unset: each
+account adds its own key after signing up (step 6), and its own OpenRouter
+account is billed. Set it only as a temporary shared fallback — every user
+without a key of their own then spends from it.
 
 ### 4. Turn on Supabase authentication
 
@@ -87,7 +93,18 @@ email" screen when the project still asks for confirmation.
 Visit `/signup` and create one account per person. There is no invite flow and
 no admin panel — signing up is the whole process.
 
-### 6. Connect an AI
+### 6. Add your OpenRouter key
+
+Sign in and go to **Settings → API keys**. Paste a key from
+<https://openrouter.ai/keys>; it is checked against OpenRouter before it is
+saved, then encrypted and stored against your account. Everything you generate
+from then on — in the web editor and through the connector — is billed to your
+OpenRouter account, not to whoever deployed the app.
+
+Each person who signs up does this once. Until they do, the dashboard prompts
+them and generation is unavailable; the rest of the app works.
+
+### 7. Connect an AI
 
 In ChatGPT or Claude, add a connector pointing at:
 
@@ -103,8 +120,11 @@ model can list, create, edit and render projects.
 Vercel is a flat monthly fee. Supabase is free (Storage included, at its own
 free-tier quota). OpenRouter is the only bill that varies, and it varies a
 lot — generated video is by far the most expensive thing here, images and
-voiceover are minor. Set a spending limit in OpenRouter before handing the
-tool to anyone.
+voiceover are minor.
+
+That bill lands on each user's own OpenRouter account, so the deployment's
+cost does not grow with the number of people using it. Everyone should still
+set a spending limit on their own OpenRouter key.
 
 ## Rendering
 

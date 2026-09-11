@@ -4,11 +4,12 @@ import { getActiveSiteId } from "@/lib/active-site";
 import { generateCreativeImageAsset, normalizeCreativeImageFormat } from "@/lib/creative/workers";
 import { InsufficientCreditsError, withCredits } from "@/lib/creative/metering";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
+import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,3 +43,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
   }
 }
+
+/* Generation on this route bills the signed-in account's own OpenRouter key. */
+export const POST = withOpenRouterKeyScope(handlePOST);
