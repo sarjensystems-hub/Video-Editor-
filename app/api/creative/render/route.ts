@@ -15,11 +15,16 @@ import { validateCreativeDocument } from "@/lib/creative/validate";
 export const runtime = "nodejs";
 
 /**
- * Full-resolution Creative Studio exports can take well beyond the old Hobby
- * 300-second ceiling. Only sandbox restoration and detached command launch
- * happen after this response; status polling owns progress and finalization.
+ * Only sandbox restoration and detached command launch happen after this
+ * response; status polling owns progress and finalization. The export itself
+ * runs detached inside the Sandbox and outlives this invocation, so this
+ * budget covers the launch alone rather than the render.
+ *
+ * 300 is the Hobby ceiling, and a higher value is rejected at deploy time with
+ * `invalid_max_duration` rather than being clamped. The launch path caps
+ * itself well under this (see `timeoutInMilliseconds` in the render adapter).
  */
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 /** How many past exports a project's history shows. */
 const HISTORY_LIMIT = 25;

@@ -29,19 +29,23 @@ function declaredDuration(absolute: string) {
   };
 }
 
-describe("Vercel Pro runtime configuration", () => {
-  it("gives only Creative Studio export the Pro 800-second budget", () => {
+const HOBBY_MAX_DURATION = 300;
+
+describe("Vercel runtime configuration", () => {
+  it("keeps every function within the Hobby maxDuration ceiling", () => {
     const declared = routeFiles(API_ROOT)
       .map(declaredDuration)
       .filter((entry): entry is { route: string; maxDuration: number } => entry !== null);
 
-    expect(declared.filter((entry) => entry.maxDuration > 800)).toEqual([]);
-    expect(
-      declared.filter(
-        (entry) => entry.route !== CREATIVE_RENDER_ROUTE && entry.maxDuration > 300,
-      ),
-    ).toEqual([]);
-    expect(declared.find((entry) => entry.route === CREATIVE_RENDER_ROUTE)?.maxDuration).toBe(800);
+    // A route above the ceiling is not clamped: Vercel rejects the whole
+    // deployment with `invalid_max_duration` after an otherwise clean build,
+    // so this has to fail here rather than at deploy time.
+    expect(declared.filter((entry) => entry.maxDuration > HOBBY_MAX_DURATION)).toEqual([]);
+    // Export takes the full ceiling; it only has to cover the detached launch,
+    // since the render itself outlives the invocation inside the Sandbox.
+    expect(declared.find((entry) => entry.route === CREATIVE_RENDER_ROUTE)?.maxDuration).toBe(
+      HOBBY_MAX_DURATION,
+    );
   });
 
   it("enables Fluid Compute for the long-running render route", () => {
