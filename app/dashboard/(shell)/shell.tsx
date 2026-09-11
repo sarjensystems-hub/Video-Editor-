@@ -40,7 +40,7 @@ export default function DashboardShell({
         className={cn(
           "flex min-h-[calc(100dvh-7rem)] flex-col transition-[margin-left] duration-200 ease-in-out lg:min-h-[100dvh]",
           // Both widths are written out so Tailwind's scanner keeps them.
-          collapsed ? "lg:ml-16" : "lg:ml-60",
+          collapsed ? "lg:ml-[68px]" : "lg:ml-64",
         )}
       >
         {children}

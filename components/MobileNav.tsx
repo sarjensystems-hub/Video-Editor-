@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Check, Clapperboard, LayoutDashboard, Plus, Settings, Video, Zap } from "lucide-react";
-import { BRAND } from "@/lib/brand";
+import { Check, Clapperboard, LayoutDashboard, Plus, Settings, Video } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
 import LogoutButton from "@/components/LogoutButton";
 import Sheet from "@/components/ui/Sheet";
 import { Button } from "@/components/ui/Button";
@@ -67,11 +67,8 @@ export function MobileTopBar({
   return (
     <>
       <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-wall-edge bg-wall px-4 lg:hidden">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="grid h-6 w-6 place-items-center rounded-md bg-fire">
-            <Zap className="h-3.5 w-3.5 text-white" strokeWidth={2.5} />
-          </span>
-          <span className="text-sm font-semibold text-chalk">{BRAND.name}</span>
+        <Link href="/dashboard">
+          <BrandLogo className="h-7" onDark />
         </Link>
 
         <div className="ml-auto flex items-center gap-2">
@@ -79,7 +76,7 @@ export function MobileTopBar({
             type="button"
             onClick={() => setAccountOpen(true)}
             aria-label="Account and workspace"
-            className="grid h-9 w-9 place-items-center rounded-full bg-fire text-sm font-bold uppercase text-white"
+            className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-sm font-bold uppercase text-white"
           >
             {email[0] ?? "?"}
           </button>
@@ -117,7 +114,7 @@ export function MobileTopBar({
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   placeholder="Workspace name"
-                  className="w-full rounded-lg border border-field-edge bg-field px-3 py-2.5 text-base text-ink focus:border-fire/40 focus:outline-none focus:ring-2 focus:ring-fire/30"
+                  className="input text-base"
                 />
                 {error && <p className="text-xs text-danger">{error}</p>}
                 <div className="flex gap-2">
@@ -164,7 +161,7 @@ export function MobileTabBar() {
             aria-current={active ? "page" : undefined}
             className={cn(
               "flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-semibold transition-colors",
-              active ? "bg-fire-wash text-fire" : "text-chalk-dim",
+              active ? "bg-wall-active text-fire" : "text-chalk-dim hover:text-chalk",
             )}
           >
             <Icon className="h-5 w-5" />

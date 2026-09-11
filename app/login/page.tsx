@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import AuthShell from "@/components/AuthShell";
+import AuthShell, { AuthError, AuthField, AuthPasswordInput } from "@/components/AuthShell";
 
 function safePostLoginRedirect(): string {
   if (typeof window === "undefined") return "/dashboard";
@@ -48,17 +48,14 @@ export default function LoginPage() {
       footer={
         <>
           New here?{" "}
-          <Link href="/signup" className="font-semibold text-orange-500 hover:text-orange-600">
+          <Link href="/signup" className="font-semibold text-fire hover:underline">
             Create an account
           </Link>
         </>
       }
     >
       <form onSubmit={handleLogin} className="space-y-5">
-        <div>
-          <label htmlFor="email" className="mb-1.5 block text-sm font-medium" style={{ color: "var(--ink)" }}>
-            Email address
-          </label>
+        <AuthField id="email" label="Email address">
           <input
             id="email"
             type="email"
@@ -69,49 +66,28 @@ export default function LoginPage() {
             placeholder="you@example.com"
             className="input"
           />
-        </div>
+        </AuthField>
 
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="password" className="block text-sm font-medium" style={{ color: "var(--ink)" }}>
-              Password
-            </label>
-            <Link href="/forgot-password" className="text-xs font-medium text-orange-500 hover:text-orange-600">
+        <AuthField
+          id="password"
+          label="Password"
+          action={
+            <Link href="/forgot-password" className="text-xs font-medium text-fire hover:underline">
               Forgot password?
             </Link>
-          </div>
-          <div className="relative">
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="input pr-11"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 transition-colors hover:text-orange-500"
-              style={{ color: "var(--ink-faint)" }}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
+          }
+        >
+          <AuthPasswordInput
+            id="password"
+            value={password}
+            onChange={setPassword}
+            show={showPassword}
+            onToggleShow={() => setShowPassword((v) => !v)}
+            autoComplete="current-password"
+          />
+        </AuthField>
 
-        {error && (
-          <div
-            role="alert"
-            className="rounded-xl px-4 py-3 text-sm"
-            style={{ backgroundColor: "var(--danger-wash)", color: "var(--danger)" }}
-          >
-            {error}
-          </div>
-        )}
+        {error && <AuthError>{error}</AuthError>}
 
         <button type="submit" disabled={loading} className="btn w-full">
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}

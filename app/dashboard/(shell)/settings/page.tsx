@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getActiveSiteId } from "@/lib/active-site";
 import SettingsClient from "@/components/SettingsClient";
+import PageHeader from "@/components/ui/PageHeader";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -12,13 +13,12 @@ export default async function SettingsPage() {
   ]);
 
   return (
-    <div className="p-8 max-w-3xl">
-      <div className="mb-8">
-        <h1 className="text-[22px] font-semibold text-gray-900 dark:text-white">Settings</h1>
-        <p className="text-sm text-gray-400 mt-0.5">
-          Manage your account and appearance.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 sm:py-10">
+      <PageHeader
+        eyebrow="Account"
+        title="Settings"
+        description="Appearance, sign-in details and the websites this account works on."
+      />
       <SettingsClient
         email={user?.email ?? ""}
         sites={sitesResult.data ?? []}

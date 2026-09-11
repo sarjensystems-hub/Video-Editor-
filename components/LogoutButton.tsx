@@ -19,9 +19,10 @@ export default function LogoutButton({ iconOnly = false }: { iconOnly?: boolean 
       <button
         onClick={handleLogout}
         title="Sign out"
-        className="text-orange-500 hover:text-orange-400 transition-colors"
+        aria-label="Sign out"
+        className="rounded-md p-1 text-chalk-dim transition-colors hover:bg-wall-active hover:text-danger"
       >
-        <LogOut className="w-3.5 h-3.5" strokeWidth={1.8} />
+        <LogOut className="h-3.5 w-3.5" strokeWidth={1.8} />
       </button>
     );
   }
@@ -29,7 +30,7 @@ export default function LogoutButton({ iconOnly = false }: { iconOnly?: boolean 
   return (
     <button
       onClick={handleLogout}
-      className="w-full text-left text-sm text-gray-500 hover:text-red-600 font-medium transition-colors"
+      className="w-full text-left text-sm font-medium text-ink-muted transition-colors hover:text-danger"
     >
       Sign out
     </button>

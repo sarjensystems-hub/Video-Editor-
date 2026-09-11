@@ -1,8 +1,9 @@
 "use client";
 
+import PageHeader from "@/components/ui/PageHeader";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Video, Upload, X, Loader2, Play, Download, RectangleHorizontal,
+  Upload, X, Loader2, Play, Download, RectangleHorizontal,
   RectangleVertical, AlertCircle, CheckCircle2, Clock, Sparkles, Volume2, VolumeX,
 } from "lucide-react";
 import {
@@ -165,30 +166,23 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
-      {/* Header */}
-      <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
-        <div>
-          <h1 className="text-xl sm:text-[26px] font-semibold tracking-tight text-gray-900 dark:text-white flex items-center gap-2.5">
-            <Video className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500 shrink-0" />
-            Videos
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-white/40 mt-1">
-            Generate video with ByteDance Seedance 2.0 Fast — upload characters, write your prompt, pick a shape.
-          </p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-8 sm:py-10">
+      <PageHeader
+        eyebrow="Generate"
+        title="Videos"
+        description="ByteDance Seedance 2.0 Fast — upload characters, write your prompt, pick a shape."
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-6 items-start">
         {/* ── LEFT: form ── */}
         <div className="space-y-6">
           {/* Characters */}
-          <div className="bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 sm:p-5">
+          <div className="card p-4 sm:p-5">
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Characters</h3>
-              <span className="text-xs text-gray-400">{characters.length}/{MAX_VIDEO_CHARACTERS}</span>
+              <h3 className="text-sm font-bold text-ink">Characters</h3>
+              <span className="text-xs text-ink-faint">{characters.length}/{MAX_VIDEO_CHARACTERS}</span>
             </div>
-            <p className="text-xs text-gray-400 mb-4">
+            <p className="text-xs text-ink-faint mb-4">
               Upload up to {MAX_VIDEO_CHARACTERS} reference images, raw — nothing is compressed or resized. Name each one exactly
               (e.g. &ldquo;Alice&rdquo;) — we automatically tell the model which reference is which before your prompt runs, so
               just refer to those same names naturally in your prompt below (e.g. &ldquo;Alice hands Bob a coffee&rdquo;). Reused
@@ -198,7 +192,7 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
               {characters.map((c, i) => (
                 <div key={c.id} className="relative group">
-                  <div className="aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 relative">
+                  <div className="relative aspect-square overflow-hidden rounded-lg border border-edge bg-canvas-subtle">
                     <img src={c.previewUrl} alt={c.name} className="w-full h-full object-cover" />
                     <span className="absolute top-1 left-1 text-[10px] font-bold bg-black/60 text-white rounded px-1.5 py-0.5">
                       {i + 1}
@@ -227,7 +221,7 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
                     value={c.name}
                     onChange={(e) => renameCharacter(c.id, e.target.value)}
                     placeholder="Name"
-                    className="mt-1 w-full text-[11px] border border-gray-200 dark:border-white/10 rounded-md px-1.5 py-1 bg-white dark:bg-white/5 text-gray-800 dark:text-white outline-none focus:border-orange-400 dark:focus:border-orange-500/50 transition-colors"
+                    className="input mt-1 px-1.5 py-1 text-[11px]"
                   />
                 </div>
               ))}
@@ -236,7 +230,7 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="aspect-square rounded-lg border border-dashed border-gray-300 dark:border-white/15 flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-orange-400 hover:text-orange-500 transition-colors"
+                  className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-edge text-ink-faint transition-colors hover:border-brand-400 hover:text-fire"
                 >
                   <Upload className="w-4 h-4" />
                   <span className="text-[10px] font-medium">Add</span>
@@ -255,9 +249,9 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
           </div>
 
           {/* Prompt */}
-          <div className="bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 sm:p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Prompt</h3>
-            <p className="text-xs text-gray-400 mb-3">
+          <div className="card p-4 sm:p-5">
+            <h3 className="text-sm font-bold text-ink mb-1">Prompt</h3>
+            <p className="text-xs text-ink-faint mb-3">
               Sent to the model exactly as you write it — nothing is added, rewritten, or cleaned up.
             </p>
             <textarea
@@ -265,17 +259,17 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe the video you want. Mention your characters by name if you uploaded any."
-              className="w-full border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white bg-white dark:bg-white/5 placeholder:text-gray-300 dark:placeholder:text-white/20 outline-none focus:border-orange-400 dark:focus:border-orange-500/50 transition-colors resize-none"
+              className="input resize-none"
             />
           </div>
 
           {/* Settings */}
-          <div className="bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 sm:p-5 space-y-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Settings</h3>
+          <div className="card p-4 sm:p-5 space-y-5">
+            <h3 className="text-sm font-bold text-ink">Settings</h3>
 
             {/* Aspect ratio */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-white/40 uppercase tracking-wider mb-2">Aspect ratio</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-faint mb-2">Aspect ratio</p>
               <div className="flex gap-2">
                 {VIDEO_ASPECT_RATIOS.map((ratio) => (
                   <button
@@ -284,8 +278,8 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
                     onClick={() => setAspectRatio(ratio)}
                     className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                       aspectRatio === ratio
-                        ? "bg-orange-50 dark:bg-orange-500/15 border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400"
-                        : "border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/40 hover:border-gray-300"
+                        ? "border-brand-400 bg-brand-500/10 text-fire"
+                        : "border-edge text-ink-muted hover:border-brand-300 hover:text-ink"
                     }`}
                   >
                     {ratio === "16:9" ? <RectangleHorizontal className="w-4 h-4" /> : <RectangleVertical className="w-4 h-4" />}
@@ -297,7 +291,7 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
 
             {/* Resolution */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-white/40 uppercase tracking-wider mb-2">Resolution</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-faint mb-2">Resolution</p>
               <div className="flex gap-2">
                 {VIDEO_RESOLUTIONS.map((res) => (
                   <button
@@ -306,8 +300,8 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
                     onClick={() => setResolution(res)}
                     className={`flex-1 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                       resolution === res
-                        ? "bg-orange-50 dark:bg-orange-500/15 border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400"
-                        : "border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/40 hover:border-gray-300"
+                        ? "border-brand-400 bg-brand-500/10 text-fire"
+                        : "border-edge text-ink-muted hover:border-brand-300 hover:text-ink"
                     }`}
                   >
                     {res}
@@ -319,8 +313,8 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
             {/* Duration */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-gray-500 dark:text-white/40 uppercase tracking-wider">Duration</p>
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">{duration}s</span>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-faint">Duration</p>
+                <span className="text-sm font-bold text-ink">{duration}s</span>
               </div>
               <input
                 type="range"
@@ -329,9 +323,9 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
                 step={1}
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
-                className="w-full accent-orange-500"
+                className="w-full accent-brand-500"
               />
-              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+              <div className="flex justify-between text-[10px] text-ink-faint mt-0.5">
                 <span>{VIDEO_MIN_DURATION}s</span>
                 <span>{VIDEO_MAX_DURATION}s</span>
               </div>
@@ -339,15 +333,15 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
 
             {/* Audio */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-white/40 uppercase tracking-wider mb-2">Audio</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-faint mb-2">Audio</p>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setGenerateAudio(true)}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                     generateAudio
-                      ? "bg-orange-50 dark:bg-orange-500/15 border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400"
-                      : "border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/40 hover:border-gray-300"
+                      ? "border-brand-400 bg-brand-500/10 text-fire"
+                      : "border-edge text-ink-muted hover:border-brand-300 hover:text-ink"
                   }`}
                 >
                   <Volume2 className="w-4 h-4" />
@@ -358,15 +352,15 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
                   onClick={() => setGenerateAudio(false)}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                     !generateAudio
-                      ? "bg-orange-50 dark:bg-orange-500/15 border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400"
-                      : "border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/40 hover:border-gray-300"
+                      ? "border-brand-400 bg-brand-500/10 text-fire"
+                      : "border-edge text-ink-muted hover:border-brand-300 hover:text-ink"
                   }`}
                 >
                   <VolumeX className="w-4 h-4" />
                   Off
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 mt-1.5">
+              <p className="text-[10px] text-ink-faint mt-1.5">
                 Dialogue, lip-sync and music. Not confirmed that Seedance 2.0 Fast always produces audio — verify on your first
                 generation.
               </p>
@@ -374,7 +368,7 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
           </div>
 
           {submitError && (
-            <p className="flex items-start gap-2 text-sm text-red-500 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-xl px-4 py-3">
+            <p className="flex items-start gap-2 rounded-xl bg-danger-wash px-4 py-3 text-sm text-danger">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               {submitError}
             </p>
@@ -392,18 +386,18 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
 
         {/* ── RIGHT: preview + history ── */}
         <div className="space-y-6">
-          <div className="bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 sm:p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Preview</h3>
+          <div className="card p-4 sm:p-5">
+            <h3 className="text-sm font-bold text-ink mb-3">Preview</h3>
             {activeJob ? <JobPreview job={activeJob} /> : (
-              <div className="aspect-video rounded-lg border border-dashed border-gray-300 dark:border-white/15 flex items-center justify-center text-gray-300 dark:text-white/20">
+              <div className="flex aspect-video items-center justify-center rounded-lg border border-dashed border-edge text-ink-faint">
                 <Play className="w-8 h-8" />
               </div>
             )}
           </div>
 
           {jobs.length > 0 && (
-            <div className="bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 sm:p-5">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Recent generations</h3>
+            <div className="card p-4 sm:p-5">
+              <h3 className="text-sm font-bold text-ink mb-3">Recent generations</h3>
               <div className="space-y-2 max-h-[480px] overflow-y-auto">
                 {jobs.map((job) => (
                   <button
@@ -411,14 +405,14 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
                     onClick={() => setActiveJob(job)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
                       activeJob?.id === job.id
-                        ? "border-orange-300 dark:border-orange-500/40 bg-orange-50 dark:bg-orange-500/10"
-                        : "border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5"
+                        ? "border-brand-400 bg-brand-500/10"
+                        : "border-edge hover:bg-canvas-subtle"
                     }`}
                   >
                     <StatusIcon status={job.status} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-800 dark:text-white/90 truncate">{job.prompt}</p>
-                      <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                      <p className="truncate text-xs font-medium text-ink">{job.prompt}</p>
+                      <p className="text-[10px] text-ink-faint flex items-center gap-1">
                         {job.aspect_ratio} · {job.resolution} · {job.duration_seconds}s ·{" "}
                         {job.generate_audio ? <Volume2 className="w-2.5 h-2.5" /> : <VolumeX className="w-2.5 h-2.5" />}
                       </p>
@@ -435,9 +429,9 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
 }
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "completed") return <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />;
-  if (status === "failed" || status === "cancelled" || status === "expired") return <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />;
-  return <Clock className="w-4 h-4 text-orange-400 shrink-0 animate-pulse" />;
+  if (status === "completed") return <CheckCircle2 className="w-4 h-4 text-success shrink-0" />;
+  if (status === "failed" || status === "cancelled" || status === "expired") return <AlertCircle className="w-4 h-4 text-danger shrink-0" />;
+  return <Clock className="w-4 h-4 text-fire shrink-0 animate-pulse" />;
 }
 
 function JobPreview({ job }: { job: VideoGenerationRow }) {
@@ -467,17 +461,17 @@ function JobPreview({ job }: { job: VideoGenerationRow }) {
 
   if (job.status === "failed" || job.status === "cancelled" || job.status === "expired") {
     return (
-      <div className="aspect-video rounded-lg border border-red-100 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 flex flex-col items-center justify-center gap-2 text-center px-4">
-        <AlertCircle className="w-6 h-6 text-red-500" />
-        <p className="text-xs text-red-600 dark:text-red-400">{job.error ?? "Generation failed. Credits were refunded."}</p>
+      <div className="flex aspect-video flex-col items-center justify-center gap-2 rounded-lg bg-danger-wash px-4 text-center">
+        <AlertCircle className="w-6 h-6 text-danger" />
+        <p className="text-xs text-danger">{job.error ?? "Generation failed. Credits were refunded."}</p>
       </div>
     );
   }
 
   return (
-    <div className="aspect-video rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 flex flex-col items-center justify-center gap-2">
-      <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
-      <p className="text-xs text-gray-400">
+    <div className="flex aspect-video flex-col items-center justify-center gap-2 rounded-lg border border-edge bg-canvas-subtle">
+      <Loader2 className="w-6 h-6 text-fire animate-spin" />
+      <p className="text-xs text-ink-faint">
         {job.status === "pending" ? "Queued…" : "Generating…"}
       </p>
     </div>

@@ -3,139 +3,154 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Design Tokens — Claude-inspired warm palette
+   Design Tokens — "Iris": cool slate ground, violet accent, dark navigation rail
+
+   Two rules hold the system together:
+
+   1. Neutrals are cool. Every grey carries a trace of blue, so the violet
+      accent reads as part of the surface family rather than a sticker on it.
+   2. The rail is dark in BOTH themes. Navigation is chrome, not content — it
+      sits behind the work in light mode and alongside it in dark, and never
+      competes with the canvas for attention.
    ───────────────────────────────────────────────────────────────────────────── */
 
 :root {
   /* Page canvas */
   --bg:          #ffffff;
-  --bg-subtle:   #faf8f5;
-  --bg-muted:    #f5f1ec;
+  --bg-subtle:   #f6f7fb;
+  --bg-muted:    #edeff6;
 
-  /* Sidebar (warm cream — Claude light) */
-  --wall:        #f0ede8;
-  --wall-hover:  #e8e4de;
-  --wall-active: #dedad3;
-  --wall-edge:   #dedad3;
+  /* Navigation rail — deliberately dark on a light page. */
+  --wall:        #0d0f16;
+  --wall-hover:  #171a24;
+  --wall-active: #1e2230;
+  --wall-edge:   #1b1e29;
 
   /* Surfaces (cards, panels) */
   --surface:     #ffffff;
-  --surface-2:   #faf8f5;
+  --surface-2:   #f6f7fb;
 
   /* Borders */
-  --edge:        #e8e3db;
-  --edge-faint:  #f0ede8;
+  --edge:        #e3e6ef;
+  --edge-faint:  #eef0f6;
 
   /* Content text */
-  --ink:         #1a1715;
-  --ink-muted:   #6b6560;
-  --ink-faint:   #a8a39d;
+  --ink:         #0d1017;
+  --ink-muted:   #5a6175;
+  --ink-faint:   #929aad;
 
-  /* Sidebar text */
-  --chalk:       #2d2a27;
-  --chalk-dim:   #7c7870;
+  /* Rail text — light in both themes, because the rail is dark in both. */
+  --chalk:       #e9ebf4;
+  --chalk-dim:   #8b93a8;
 
-  /* Accent — brand orange */
-  --fire:        #f97316;
-  --fire-hover:  #ea6c0a;
-  --fire-wash:   rgba(249, 115, 22, 0.08);
+  /* Accent — iris violet */
+  --fire:        #6d5dfa;
+  --fire-hover:  #5b4ae8;
+  --fire-wash:   rgba(109, 93, 250, 0.10);
 
   /* Form fields — distinct from --surface so an input reads as inset */
   --field:       #ffffff;
-  --field-edge:  #d8d2c8;
+  --field-edge:  #d7dbe7;
 
   /* Status. Each colour pairs with a wash weak enough to carry body text. */
-  --danger:      #c2410c;
-  --danger-wash: rgba(220, 38, 38, 0.08);
-  --success:     #15803d;
-  --success-wash: rgba(22, 163, 74, 0.09);
-  --warning:     #b45309;
-  --warning-wash: rgba(217, 119, 6, 0.10);
+  --danger:      #d92d20;
+  --danger-wash: rgba(217, 45, 32, 0.08);
+  --success:     #0e9f6e;
+  --success-wash: rgba(14, 159, 110, 0.10);
+  --warning:     #b54708;
+  --warning-wash: rgba(181, 71, 8, 0.10);
 
   /* Editor selection. Deliberately not --fire: a selection ring competing with
-     the brand accent makes neither readable on a busy canvas. */
-  --select:      #2563eb;
-  --select-wash: rgba(37, 99, 235, 0.10);
+     the brand accent makes neither readable on a busy canvas. Cyan sits far
+     enough from violet on the wheel to never be mistaken for it. */
+  --select:      #0891b2;
+  --select-wash: rgba(8, 145, 178, 0.12);
   --select-ink:  #ffffff;
 
   /* The editor canvas is its own dark room in both themes — artwork is judged
      against a neutral ground, not against the app chrome. */
-  --stage:       #09090b;
-  --stage-frame: #1c1917;
+  --stage:       #06070b;
+  --stage-frame: #10121a;
 
   /* Layered surfaces above the page: sheets, popovers, dialogs. */
-  --overlay:     rgba(26, 23, 21, 0.42);
+  --overlay:     rgba(9, 11, 18, 0.52);
   --sheet:       #ffffff;
-  --sheet-grip:  #d8d2c8;
+  --sheet-grip:  #d7dbe7;
 
-  --shadow-sm:   0 1px 2px rgba(26, 23, 21, 0.06);
-  --shadow-md:   0 6px 20px rgba(26, 23, 21, 0.09);
-  --shadow-lg:   0 22px 60px rgba(26, 23, 21, 0.16);
+  --shadow-sm:   0 1px 2px rgba(13, 16, 23, 0.06);
+  --shadow-md:   0 8px 24px rgba(13, 16, 23, 0.08);
+  --shadow-lg:   0 24px 64px rgba(13, 16, 23, 0.14);
+
+  /* Accent glow, for the few surfaces that carry the brand rather than content. */
+  --fire-glow:   0 8px 24px rgba(109, 93, 250, 0.28);
 }
 
 html.dark {
   /* Page canvas */
-  --bg:          #141211;
-  --bg-subtle:   #1a1917;
-  --bg-muted:    #211f1d;
+  --bg:          #090b11;
+  --bg-subtle:   #0e1118;
+  --bg-muted:    #151925;
 
-  /* Sidebar (warm dark — Claude dark) */
-  --wall:        #1e1c1a;
-  --wall-hover:  #252321;
-  --wall-active: #2d2b28;
-  --wall-edge:   #2d2b28;
+  /* Navigation rail — a shade darker than the page, so it still reads as
+     chrome once the page itself goes dark. */
+  --wall:        #0b0d13;
+  --wall-hover:  #161a24;
+  --wall-active: #1d2230;
+  --wall-edge:   #1a1e29;
 
   /* Surfaces */
-  --surface:     #1e1c1a;
-  --surface-2:   #252321;
+  --surface:     #101420;
+  --surface-2:   #161b28;
 
   /* Borders */
-  --edge:        #38352f;
-  --edge-faint:  #2d2b28;
+  --edge:        #232938;
+  --edge-faint:  #1a1f2c;
 
   /* Content text */
-  --ink:         #ede9e3;
-  --ink-muted:   #9c9590;
-  --ink-faint:   #6b6560;
+  --ink:         #e7e9f2;
+  --ink-muted:   #949cb1;
+  --ink-faint:   #666e83;
 
-  /* Sidebar text */
-  --chalk:       #ede9e3;
-  --chalk-dim:   #7c7870;
+  /* Rail text */
+  --chalk:       #e7e9f2;
+  --chalk-dim:   #8b93a8;
 
-  /* Accent */
-  --fire:        #f97316;
-  --fire-hover:  #fb923c;
-  --fire-wash:   rgba(249, 115, 22, 0.12);
+  /* Accent — lifted, because #6d5dfa goes muddy against #101420. */
+  --fire:        #7c6ffc;
+  --fire-hover:  #9184ff;
+  --fire-wash:   rgba(124, 111, 252, 0.16);
 
   /* Fields sit below the surface in dark, the inverse of light. */
-  --field:       #171614;
-  --field-edge:  #413d37;
+  --field:       #0b0e15;
+  --field-edge:  #2a3040;
 
   /* Status colours lighten in dark so they clear contrast against --surface;
-     the same hex that reads well on white goes muddy on #1e1c1a. */
+     the same hex that reads well on white goes muddy on #101420. */
   --danger:      #fca5a5;
   --danger-wash: rgba(248, 113, 113, 0.15);
-  --success:     #86efac;
-  --success-wash: rgba(74, 222, 128, 0.15);
+  --success:     #6ee7b7;
+  --success-wash: rgba(52, 211, 153, 0.15);
   --warning:     #fcd34d;
   --warning-wash: rgba(251, 191, 36, 0.15);
 
-  --select:      #60a5fa;
-  --select-wash: rgba(96, 165, 250, 0.18);
-  --select-ink:  #0b1220;
+  --select:      #22d3ee;
+  --select-wash: rgba(34, 211, 238, 0.18);
+  --select-ink:  #04151a;
 
-  --stage:       #09090b;
-  --stage-frame: #100f0e;
+  --stage:       #05060a;
+  --stage-frame: #0d0f16;
 
-  --overlay:     rgba(0, 0, 0, 0.62);
-  --sheet:       #211f1d;
-  --sheet-grip:  #413d37;
+  --overlay:     rgba(0, 0, 0, 0.66);
+  --sheet:       #161b28;
+  --sheet-grip:  #2a3040;
 
   /* Shadows barely register on dark ground; borders do the separating instead,
      so these stay subtle rather than being scaled up to compensate. */
   --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md:   0 6px 20px rgba(0, 0, 0, 0.45);
-  --shadow-lg:   0 22px 60px rgba(0, 0, 0, 0.55);
+  --shadow-md:   0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg:   0 24px 64px rgba(0, 0, 0, 0.55);
+
+  --fire-glow:   0 8px 28px rgba(124, 111, 252, 0.30);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -168,25 +183,33 @@ html.dark .divide-gray-200 > * + * { border-color: var(--edge); }
    ───────────────────────────────────────────────────────────────────────────── */
 
 @layer components {
-  /* Primary button */
+  /* Primary button. The radius dropped from a pill-ish 0.75rem to 0.625rem:
+     squarer corners read as a tool, rounder ones as a marketing page. */
   .btn {
     @apply inline-flex items-center justify-center gap-2
-           bg-orange-500 text-white font-semibold rounded-xl
-           px-4 py-2.5 text-sm
-           hover:bg-orange-600
-           active:scale-[0.96]
-           hover:shadow-lg hover:shadow-orange-500/20
+           font-semibold rounded-[10px]
+           px-4 py-2.5 text-sm text-white
+           active:translate-y-px
            transition-all duration-150
-           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0;
+    background-color: var(--fire);
+  }
+  .btn:hover:not(:disabled) {
+    background-color: var(--fire-hover);
+    box-shadow: var(--fire-glow);
+  }
+  .btn:focus-visible {
+    outline: 2px solid var(--fire);
+    outline-offset: 2px;
   }
 
   /* Ghost / secondary button */
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2
-           bg-transparent font-medium rounded-xl
+           bg-transparent font-medium rounded-[10px]
            px-4 py-2.5 text-sm border
            transition-all duration-150
-           active:scale-[0.96];
+           active:translate-y-px;
     color: var(--ink-muted);
     border-color: var(--edge);
   }
@@ -198,21 +221,27 @@ html.dark .divide-gray-200 > * + * { border-color: var(--edge); }
   /* Danger button */
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2
-           bg-red-50 text-red-600 font-medium rounded-xl
-           px-4 py-2.5 text-sm border border-red-100
-           hover:bg-red-100
-           active:scale-[0.96]
+           font-medium rounded-[10px]
+           px-4 py-2.5 text-sm border border-transparent
+           hover:brightness-105
+           active:translate-y-px
            transition-all duration-150;
+    background-color: var(--danger-wash);
+    color: var(--danger);
   }
 
   /* Input field */
   .input {
-    @apply block w-full rounded-xl border px-4 py-2.5 text-sm
-           focus:outline-none focus:ring-2 focus:ring-orange-500/30
-           transition-shadow;
-    background-color: var(--surface);
-    border-color: var(--edge);
+    @apply block w-full rounded-[10px] border px-3.5 py-2.5 text-sm
+           focus:outline-none
+           transition-[border-color,box-shadow] duration-150;
+    background-color: var(--field);
+    border-color: var(--field-edge);
     color: var(--ink);
+  }
+  .input:focus {
+    border-color: var(--fire);
+    box-shadow: 0 0 0 3px var(--fire-wash);
   }
   .input::placeholder { color: var(--ink-faint); }
 
@@ -221,6 +250,40 @@ html.dark .divide-gray-200 > * + * { border-color: var(--edge); }
     @apply rounded-2xl border;
     background-color: var(--surface);
     border-color: var(--edge);
+  }
+
+  /* Section eyebrow — the small all-caps label above a group. */
+  .eyebrow {
+    @apply text-[10px] font-bold uppercase tracking-[0.14em];
+    color: var(--ink-faint);
+  }
+
+  /* A navigation row in the rail. Active state is a filled pill with an accent
+     bar, rather than the old border-left-plus-dot, so it is legible at a glance
+     from the far side of the screen. */
+  .rail-link {
+    @apply relative flex items-center gap-3 rounded-[10px] px-2.5 py-2
+           text-[13px] font-medium transition-colors duration-150;
+    color: var(--chalk-dim);
+  }
+  .rail-link:hover {
+    background-color: var(--wall-hover);
+    color: var(--chalk);
+  }
+  .rail-link[data-active="true"] {
+    background-color: var(--wall-active);
+    color: var(--chalk);
+  }
+  .rail-link[data-active="true"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    height: 1.125rem;
+    width: 3px;
+    transform: translateY(-50%);
+    border-radius: 0 999px 999px 0;
+    background-color: var(--fire);
   }
 }
 
@@ -284,7 +347,7 @@ html.dark .divide-gray-200 > * + * { border-color: var(--edge); }
 .ss-grain::before {
   content: "";
   position: absolute; inset: 0;
-  background-image: radial-gradient(rgba(26,23,21,0.04) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(13,16,23,0.045) 1px, transparent 1px);
   background-size: 3px 3px;
   pointer-events: none;
   mix-blend-mode: multiply;

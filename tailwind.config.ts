@@ -79,17 +79,19 @@ const config: Config = {
         },
         overlay: "var(--overlay)",
 
-        /* ── Brand orange (legacy + landing-page builder) ── */
+        /* ── Brand iris — a literal scale, so opacity modifiers (bg-brand-500/20)
+              still work where a var()-backed token cannot carry them. ── */
         brand: {
-          50:  "#fff7ed",
-          100: "#ffedd5",
-          200: "#fed7aa",
-          300: "#fdba74",
-          400: "#fb923c",
-          500: "#f97316",
-          600: "#ea6c0a",
-          700: "#c2550a",
-          900: "#7c2d12",
+          50:  "#f2f1fe",
+          100: "#e7e4fd",
+          200: "#d0cbfb",
+          300: "#b0a6f8",
+          400: "#8f81f4",
+          500: "#6d5dfa",
+          600: "#5b4ae8",
+          700: "#4a3bc4",
+          800: "#3b2f9c",
+          900: "#282073",
         },
       },
       boxShadow: {
@@ -99,8 +101,8 @@ const config: Config = {
       },
       keyframes: {
         "btn-glow": {
-          "0%, 100%": { boxShadow: "0 0 0 0 rgba(249,115,22,0.35)" },
-          "50%":       { boxShadow: "0 0 0 6px rgba(249,115,22,0)" },
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(109,93,250,0.35)" },
+          "50%":       { boxShadow: "0 0 0 6px rgba(109,93,250,0)" },
         },
         "fade-in": {
           from: { opacity: "0", transform: "translateY(4px)" },

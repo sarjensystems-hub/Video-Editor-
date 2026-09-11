@@ -54,8 +54,8 @@ function ResetCallbackHandler() {
   }, [router, searchParams]);
 
   return (
-    <div className="min-h-screen bg-[#f4f4f8] dark:bg-[#0f0f17] flex items-center justify-center">
-      <p className="text-sm text-gray-400 dark:text-white/30">Verifying…</p>
+    <div className="flex min-h-screen items-center justify-center bg-canvas">
+      <p className="text-sm text-ink-faint">Verifying…</p>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { setTheme } from "@/app/actions/theme";
 import { sendPasswordReset } from "@/app/actions/auth";
 import { deleteSite } from "@/app/actions/sites";
 import { useRouter } from "next/navigation";
+import { cn } from "@/components/ui/cn";
 
 const TABS = [
   { id: "appearance", label: "Appearance", icon: Sun },
@@ -69,136 +70,121 @@ export default function SettingsClient({ email, sites, activeSiteId }: Props) {
   }
 
   return (
-    <div className="flex gap-6">
-      {/* Sidebar tabs */}
-      <div className="w-44 shrink-0">
-        <nav className="space-y-0.5">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${
-                activeTab === id
-                  ? "bg-orange-50 dark:bg-orange-500/15 text-orange-600 dark:text-orange-400"
-                  : "text-gray-500 dark:text-white/40 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-800 dark:hover:text-white/70"
-              }`}
-            >
-              <Icon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-              {label}
-            </button>
-          ))}
-        </nav>
-      </div>
+    /* Tabs are a scrolling row on a phone and a column on a desktop: the same
+       three destinations, placed where the pointer already is. */
+    <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
+      <nav className="-mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:w-48 lg:flex-col lg:overflow-visible lg:px-0">
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            aria-current={activeTab === id ? "page" : undefined}
+            className={cn(
+              "flex shrink-0 items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-sm font-medium transition-colors",
+              activeTab === id
+                ? "bg-brand-500/10 text-fire"
+                : "text-ink-muted hover:bg-canvas-subtle hover:text-ink",
+            )}
+          >
+            <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+            {label}
+          </button>
+        ))}
+      </nav>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        {/* Appearance */}
+      <div className="min-w-0 flex-1">
         {activeTab === "appearance" && (
-          <Card title="Appearance">
-            <p className="text-sm text-gray-500 dark:text-white/40 mb-6">
-              Choose how Studio looks. Saved automatically.
-            </p>
-            <div className="flex items-center gap-4">
+          <Card title="Appearance" hint="Choose how Studio looks. Saved automatically.">
+            <div className="flex flex-wrap items-center gap-3">
               <ThemeOption label="Light" icon={Sun}  active={!isDark} onClick={() => toggleTheme(false)} />
               <ThemeOption label="Dark"  icon={Moon} active={isDark}  onClick={() => toggleTheme(true)} />
             </div>
-            {isPending && (
-              <p className="text-xs text-gray-400 mt-3">Saving preference…</p>
-            )}
+            {isPending && <p className="mt-3 text-xs text-ink-faint">Saving preference…</p>}
           </Card>
         )}
 
-        {/* Account */}
         {activeTab === "account" && (
-          <div className="space-y-5">
-          <Card title="Account">
-            <div className="space-y-5">
-              <div>
-                <p className="text-xs font-medium text-gray-400 dark:text-white/30 uppercase tracking-wider mb-1.5">Email</p>
-                <p className="text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-lg px-4 py-2.5">
-                  {email}
-                </p>
-              </div>
+          <div className="grid gap-4">
+            <Card title="Account">
+              <div className="grid gap-5">
+                <Row label="Email">
+                  <p className="rounded-[10px] border border-edge bg-canvas-subtle px-3.5 py-2.5 text-sm text-ink">
+                    {email}
+                  </p>
+                </Row>
 
-              <div className="border-t border-gray-100 dark:border-white/8 pt-5">
-                <p className="text-xs font-medium text-gray-400 dark:text-white/30 uppercase tracking-wider mb-1.5">Password</p>
-                <p className="text-sm text-gray-500 dark:text-white/40 mb-3">
-                  We&apos;ll send a password reset link to your email address.
-                </p>
-                {pwEmailSent ? (
-                  <div className="flex items-center gap-2.5 bg-green-50 dark:bg-green-500/10 border border-green-100 dark:border-green-500/20 rounded-xl px-4 py-3">
-                    <Check className="w-4 h-4 text-green-500 shrink-0" />
-                    <p className="text-sm text-green-700 dark:text-green-400 font-medium">
-                      Reset link sent to {email}
-                    </p>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleSendPasswordReset}
-                    disabled={pwSending}
-                    className="btn-ghost flex items-center gap-2"
-                  >
-                    <Mail className="w-4 h-4" />
-                    {pwSending ? "Sending…" : "Send Password Reset Email"}
-                  </button>
-                )}
+                <Row label="Password">
+                  <p className="mb-3 text-sm text-ink-muted">
+                    We&apos;ll send a password reset link to your email address.
+                  </p>
+                  {pwEmailSent ? (
+                    <div className="flex items-center gap-2.5 rounded-[10px] bg-success-wash px-3.5 py-3">
+                      <Check className="h-4 w-4 shrink-0 text-success" />
+                      <p className="text-sm font-medium text-success">Reset link sent to {email}</p>
+                    </div>
+                  ) : (
+                    <button onClick={handleSendPasswordReset} disabled={pwSending} className="btn-ghost">
+                      <Mail className="h-4 w-4" />
+                      {pwSending ? "Sending…" : "Send reset email"}
+                    </button>
+                  )}
+                </Row>
               </div>
-            </div>
-          </Card>
+            </Card>
 
-          <Card title="Connected apps">
-            <p className="mb-4 text-sm text-ink-muted">
-              Assistants holding a Studio connection. Revoking takes effect immediately.
-            </p>
-            <ConnectedApps />
-          </Card>
+            <Card
+              title="Connected apps"
+              hint="Assistants holding a Studio connection. Revoking takes effect immediately."
+            >
+              <ConnectedApps />
+            </Card>
           </div>
         )}
 
-        {/* Websites */}
         {activeTab === "websites" && (
-          <Card title="Websites">
-            <p className="text-sm text-gray-500 dark:text-white/40 mb-5">
-              Manage the websites connected to your account.
-            </p>
+          <Card title="Websites" hint="Manage the websites connected to your account.">
             {deleteError && (
-              <div className="flex items-center gap-2 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-xl px-4 py-3 mb-4">
-                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                <p className="text-sm text-red-700 dark:text-red-400">{deleteError}</p>
+              <div className="mb-4 flex items-center gap-2 rounded-[10px] bg-danger-wash px-3.5 py-3">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-danger" />
+                <p className="text-sm text-danger">{deleteError}</p>
               </div>
             )}
             {sites.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-white/30">No websites added yet.</p>
+              <p className="text-sm text-ink-faint">No websites added yet.</p>
             ) : (
-              <div className="space-y-2">
+              <ul className="grid gap-2">
                 {sites.map((site) => (
-                  <div key={site.id} className="flex items-center gap-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl px-4 py-3">
-                    <Globe className="w-4 h-4 text-gray-400 dark:text-white/30 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  <li
+                    key={site.id}
+                    className="flex items-center gap-3 rounded-xl border border-edge bg-canvas-subtle px-3.5 py-3"
+                  >
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-500/10 text-fire">
+                      <Globe className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-2 truncate text-sm font-medium text-ink">
                         {site.name}
                         {site.id === activeSiteId && (
-                          <span className="ml-2 text-[10px] font-medium bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 px-1.5 py-0.5 rounded-full">Active</span>
+                          <span className="rounded-full bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fire">
+                            Active
+                          </span>
                         )}
                       </p>
-                      {site.url && (
-                        <p className="text-xs text-gray-400 dark:text-white/30 truncate">{site.url}</p>
-                      )}
+                      {site.url && <p className="truncate text-xs text-ink-faint">{site.url}</p>}
                     </div>
                     {confirmDeleteId === site.id ? (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs text-gray-500 dark:text-white/40">Delete?</span>
+                      <div className="flex shrink-0 items-center gap-1">
                         <button
                           onClick={() => handleDeleteSite(site.id)}
                           disabled={deletingId === site.id}
-                          className="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 disabled:opacity-50 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                          className="rounded-lg px-2 py-1 text-xs font-bold text-danger transition-colors hover:bg-danger-wash disabled:opacity-50"
                         >
                           {deletingId === site.id ? "Deleting…" : "Confirm"}
                         </button>
                         <button
                           onClick={() => setConfirmDeleteId(null)}
                           disabled={deletingId === site.id}
-                          className="text-xs font-medium text-gray-500 dark:text-white/40 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                          className="rounded-lg px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-canvas-muted"
                         >
                           Cancel
                         </button>
@@ -206,28 +192,37 @@ export default function SettingsClient({ email, sites, activeSiteId }: Props) {
                     ) : (
                       <button
                         onClick={() => { setConfirmDeleteId(site.id); setDeleteError(null); }}
-                        className="text-gray-300 dark:text-white/20 hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 shrink-0"
+                        className="shrink-0 rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-danger-wash hover:text-danger"
                         title="Delete website"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     )}
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </Card>
         )}
-
       </div>
     </div>
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl p-6">
-      <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-5">{title}</h2>
+    <section className="card p-5 sm:p-6">
+      <h2 className="text-sm font-bold text-ink">{title}</h2>
+      {hint && <p className="mt-1 mb-5 text-sm text-ink-muted">{hint}</p>}
+      <div className={hint ? "" : "mt-5"}>{children}</div>
+    </section>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="border-t border-edge-faint pt-5 first:border-0 first:pt-0">
+      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-ink-faint">{label}</p>
       {children}
     </div>
   );
@@ -244,19 +239,16 @@ function ThemeOption({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center gap-2 w-28 py-5 rounded-xl border-2 transition-all ${
+      aria-pressed={active}
+      className={cn(
+        "flex w-32 flex-col items-center gap-2 rounded-xl border py-5 transition-all",
         active
-          ? "border-orange-400 dark:border-orange-500 bg-orange-50 dark:bg-orange-500/10"
-          : "border-gray-100 dark:border-white/10 hover:border-gray-200 dark:hover:border-white/20"
-      }`}
+          ? "border-brand-400 bg-brand-500/10"
+          : "border-edge hover:border-brand-300 hover:bg-canvas-subtle",
+      )}
     >
-      <Icon
-        className={`w-5 h-5 ${active ? "text-orange-500" : "text-gray-400 dark:text-white/30"}`}
-        strokeWidth={1.8}
-      />
-      <span className={`text-sm font-medium ${active ? "text-orange-600 dark:text-orange-400" : "text-gray-500 dark:text-white/40"}`}>
-        {label}
-      </span>
+      <Icon className={cn("h-5 w-5", active ? "text-fire" : "text-ink-faint")} strokeWidth={1.8} />
+      <span className={cn("text-sm font-medium", active ? "text-fire" : "text-ink-muted")}>{label}</span>
     </button>
   );
 }

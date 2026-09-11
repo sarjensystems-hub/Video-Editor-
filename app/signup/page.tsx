@@ -12,9 +12,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
+import { Loader2, MailCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import AuthShell from "@/components/AuthShell";
+import AuthShell, { AuthError, AuthField, AuthPasswordInput } from "@/components/AuthShell";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -65,25 +65,18 @@ export default function SignupPage() {
         title="Check your email"
         subtitle="Your account is one click away."
         footer={
-          <Link href="/login" className="font-semibold text-orange-500 hover:text-orange-600">
+          <Link href="/login" className="font-semibold text-fire hover:underline">
             Back to sign in
           </Link>
         }
       >
-        <div
-          className="card flex flex-col items-center p-8 text-center"
-          style={{ backgroundColor: "var(--surface-2)" }}
-        >
-          <span
-            className="flex h-12 w-12 items-center justify-center rounded-full"
-            style={{ backgroundColor: "var(--fire-wash)" }}
-          >
-            <MailCheck className="h-6 w-6 text-orange-500" />
+        <div className="card flex flex-col items-center bg-canvas-subtle p-8 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-brand-500/10">
+            <MailCheck className="h-6 w-6 text-fire" />
           </span>
-          <p className="mt-4 text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
-            We sent a confirmation link to{" "}
-            <strong style={{ color: "var(--ink)" }}>{email}</strong>. Click it to activate your
-            account.
+          <p className="mt-4 text-sm leading-relaxed text-ink-muted">
+            We sent a confirmation link to <strong className="text-ink">{email}</strong>. Click it to
+            activate your account.
           </p>
         </div>
       </AuthShell>
@@ -97,17 +90,14 @@ export default function SignupPage() {
       footer={
         <>
           Already have an account?{" "}
-          <Link href="/login" className="font-semibold text-orange-500 hover:text-orange-600">
+          <Link href="/login" className="font-semibold text-fire hover:underline">
             Sign in
           </Link>
         </>
       }
     >
       <form onSubmit={handleSignup} className="space-y-5">
-        <div>
-          <label htmlFor="email" className="mb-1.5 block text-sm font-medium" style={{ color: "var(--ink)" }}>
-            Email address
-          </label>
+        <AuthField id="email" label="Email address">
           <input
             id="email"
             type="email"
@@ -118,52 +108,29 @@ export default function SignupPage() {
             placeholder="you@example.com"
             className="input"
           />
-        </div>
+        </AuthField>
 
-        <div>
-          <label htmlFor="password" className="mb-1.5 block text-sm font-medium" style={{ color: "var(--ink)" }}>
-            Password
-          </label>
-          <div className="relative">
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="new-password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
-              className="input pr-11"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 transition-colors hover:text-orange-500"
-              style={{ color: "var(--ink-faint)" }}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
+        <AuthField id="password" label="Password">
+          <AuthPasswordInput
+            id="password"
+            value={password}
+            onChange={setPassword}
+            show={showPassword}
+            onToggleShow={() => setShowPassword((v) => !v)}
+            autoComplete="new-password"
+            minLength={8}
+            placeholder="At least 8 characters"
+          />
+        </AuthField>
 
-        {error && (
-          <div
-            role="alert"
-            className="rounded-xl px-4 py-3 text-sm"
-            style={{ backgroundColor: "var(--danger-wash)", color: "var(--danger)" }}
-          >
-            {error}
-          </div>
-        )}
+        {error && <AuthError>{error}</AuthError>}
 
         <button type="submit" disabled={loading} className="btn w-full">
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           {loading ? "Creating account…" : "Create account"}
         </button>
 
-        <p className="text-center text-xs leading-relaxed" style={{ color: "var(--ink-faint)" }}>
+        <p className="text-center text-xs leading-relaxed text-ink-faint">
           By creating an account you agree to our Terms of Service and Privacy Policy.
         </p>
       </form>
