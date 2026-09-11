@@ -13,6 +13,7 @@
  */
 
 import { getOpenRouterKey } from "./openrouter-key";
+import { appUrl } from "@/lib/app-url";
 const DEFAULT_MODEL = "google/gemini-2.5-flash-image";
 const PREMIUM_MODEL = "google/gemini-3.1-flash-image-preview";
 
@@ -64,7 +65,7 @@ async function callGeminiImage({ content, aspectRatio, logTag, model = DEFAULT_M
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${apiKey}`,
-        "HTTP-Referer":  process.env.NEXT_PUBLIC_APP_URL ?? "https://studio.example.com",
+        "HTTP-Referer":  appUrl(),
         "X-Title":       "Studio",
       },
       body: JSON.stringify({

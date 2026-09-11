@@ -6,15 +6,8 @@ const ROOT = resolve(__dirname, "..");
 const SOURCE_DIRS = ["app", "components", "lib", "remotion", "scripts"];
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mjs", ".js", ".jsx"];
 
-/** The one shipped module allowed to read the deployment-wide key. */
-const ALLOWED = new Set([join("lib", "openrouter-key.ts")]);
-
-/**
- * Tests may name the variable: several stub it to stand in for a configured
- * key, and nothing they do can bill a real account. The rule that matters is
- * about shipped code.
- */
-const isTest = (file: string) => file.includes(".test.");
+/** This file names the variable in order to test that nothing else does. */
+const ALLOWED = new Set([join("lib", "openrouter-key-guards.test.ts")]);
 
 function sourceFiles(): string[] {
   const found: string[] = [];
@@ -35,17 +28,14 @@ function sourceFiles(): string[] {
 
 describe("bring-your-own-key guards", () => {
   /**
-   * Reading the env var directly is how a generation path silently goes back
-   * to billing the deployment owner for someone else's work: it keeps working
-   * in development, where that key is set, and only shows up as a surprise
-   * OpenRouter invoice.
+   * There is no deployment-wide key at all. Reintroducing one — even as a
+   * fallback, even in a test helper — puts the deployment owner back on the
+   * hook for other people's generation, and it would keep working locally
+   * rather than failing loudly.
    */
-  it("resolves the OpenRouter key in exactly one module", () => {
+  it("reads no deployment-wide OpenRouter key anywhere", () => {
     const offenders = sourceFiles().filter(
-      (file) =>
-        !ALLOWED.has(file) &&
-        !isTest(file) &&
-        readFileSync(join(ROOT, file), "utf8").includes("OPENROUTER_API_KEY"),
+      (file) => !ALLOWED.has(file) && readFileSync(join(ROOT, file), "utf8").includes("OPENROUTER_API_KEY"),
     );
     expect(offenders).toEqual([]);
   });

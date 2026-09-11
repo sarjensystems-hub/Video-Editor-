@@ -26,6 +26,7 @@
  */
 import { requireOpenRouterKey } from "@/lib/openrouter-key";
 import type { VideoAspectRatio, VideoResolution, VideoJobState, VideoCharacterRef } from "@/lib/video-gen";
+import { appUrl } from "@/lib/app-url";
 
 export const DEFAULT_VIDEO_MODEL = "bytedance/seedance-2.0-fast";
 const API_BASE = "https://openrouter.ai/api/v1/videos";
@@ -47,7 +48,7 @@ function buildCharacterLegend(characters: VideoCharacterRef[], instruction?: str
 async function authHeaders(): Promise<Record<string, string>> {
   return {
     Authorization: `Bearer ${await requireOpenRouterKey()}`,
-    "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "https://studio.example.com",
+    "HTTP-Referer": appUrl(),
     "X-Title": "Studio",
   };
 }

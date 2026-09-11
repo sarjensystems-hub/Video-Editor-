@@ -5,13 +5,9 @@ import McpConnectCard from "@/components/dashboard/McpConnectCard";
 import { createClient } from "@/lib/supabase/server";
 import { isRenderJobRunning } from "@/lib/creative/render-job";
 import { readOpenRouterKeyStatus } from "@/lib/openrouter-key";
+import { requestOrigin } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
-
-/** Public origin used for the MCP endpoint shown to the user. */
-function appOrigin(): string {
-  return process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://studio.example.com";
-}
 
 function relativeTime(value: string | null): string {
   if (!value) return "";
@@ -45,9 +41,9 @@ export default async function DashboardPage() {
   const renders = recentRenders.data ?? [];
   const rendering = renders.filter((render) => isRenderJobRunning(render.status)).length;
 
-  // Nothing generates without a key, so an account that has neither its own
-  // nor a deployment fallback is told here rather than at the first failure.
-  const needsKey = !keyStatus.configured && !keyStatus.fallbackAvailable;
+  // Nothing generates without a key, and there is no shared one behind it, so
+  // an account without one is told here rather than at its first failure.
+  const needsKey = !keyStatus.configured;
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-8 sm:py-10">
@@ -127,7 +123,7 @@ export default async function DashboardPage() {
             />
           </div>
 
-          <McpConnectCard url={`${appOrigin()}/api/mcp`} />
+          <McpConnectCard url={`${await requestOrigin()}/api/mcp`} />
         </div>
 
         <section className="card h-fit p-5">

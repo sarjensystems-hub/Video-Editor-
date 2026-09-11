@@ -10,6 +10,7 @@
  * chat-completions endpoint.
  */
 import { requireOpenRouterKey } from "../openrouter-key";
+import { appUrl } from "@/lib/app-url";
 import { resolveAudioContainer, audioContentTypeFor, sniffAudioContainer, wrapPcmInWav } from "./audio-format";
 import {
   DEFAULT_MUSIC_MODEL,
@@ -23,7 +24,7 @@ const API_BASE = "https://openrouter.ai/api/v1";
 async function authHeaders(): Promise<Record<string, string>> {
   return {
     Authorization: `Bearer ${await requireOpenRouterKey()}`,
-    "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "https://studio.example.com",
+    "HTTP-Referer": appUrl(),
     "X-Title": "Studio",
   };
 }

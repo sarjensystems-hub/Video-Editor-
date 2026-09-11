@@ -9,6 +9,7 @@
  */
 
 import { requireOpenRouterKey } from "./openrouter-key";
+import { appUrl } from "@/lib/app-url";
 const PRIMARY_MODEL  = "google/gemini-2.5-flash";
 const FALLBACK_MODEL = "google/gemini-2.0-flash-lite-001";
 
@@ -33,7 +34,7 @@ async function callOpenRouter(
     headers: {
       "Content-Type": "application/json",
       Authorization:  `Bearer ${apiKey}`,
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "https://studio.example.com",
+      "HTTP-Referer": appUrl(),
       "X-Title":      "Studio",
     },
     body: JSON.stringify(body),

@@ -60,22 +60,18 @@ export function withUserOpenRouterKey<T>(
 }
 
 /**
- * The key for the current request, or null if there is none.
+ * The key for the current request, or null if the account has not added one.
  *
- * Precedence is the user's own key, then the deployment-wide
- * `OPENROUTER_API_KEY` if one is still set. The env var is a fallback for
- * deployments mid-migration, not the intended arrangement: with it unset, an
- * account that has not added a key simply cannot generate, which is the point
- * of bring-your-own-key.
+ * There is no deployment-wide fallback by design: a shared key would bill
+ * whoever deployed the app for everyone's generation, which is the
+ * arrangement bring-your-own-key exists to end. An account with no key
+ * cannot generate, and is told so.
  */
 export async function getOpenRouterKey(): Promise<string | null> {
   const context = storage.getStore();
-  if (context) {
-    context.resolved ??= context.load();
-    const userKey = await context.resolved;
-    if (userKey) return userKey;
-  }
-  return process.env.OPENROUTER_API_KEY?.trim() || null;
+  if (!context) return null;
+  context.resolved ??= context.load();
+  return context.resolved;
 }
 
 /** As `getOpenRouterKey`, but throws the message the user needs to act on. */
@@ -92,8 +88,6 @@ export type OpenRouterKeyStatus = {
   /** Last four characters of the stored key — enough to recognise it by. */
   last4: string | null;
   setAt: string | null;
-  /** True when the deployment still carries a shared key as a fallback. */
-  fallbackAvailable: boolean;
 };
 
 /** What Settings shows. Never decrypts, so it cannot leak the key. */
@@ -111,7 +105,6 @@ export async function readOpenRouterKeyStatus(
     configured: Boolean(data?.openrouter_key_cipher),
     last4: (data?.openrouter_key_last4 as string | null) ?? null,
     setAt: (data?.openrouter_key_set_at as string | null) ?? null,
-    fallbackAvailable: Boolean(process.env.OPENROUTER_API_KEY?.trim()),
   };
 }
 

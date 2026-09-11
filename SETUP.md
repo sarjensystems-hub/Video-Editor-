@@ -25,7 +25,7 @@ with — a paid plan on a personal address is fine.
 |---|---|---|
 | **Vercel** | Paid | Hosts the app and runs the video renders. The free plan forbids commercial use and cannot render, so this one has to be paid. |
 | **Supabase** | Free | The database *and* the media storage: projects, revisions, assets, render jobs, generated images/audio/video, and the sign-ins that let ChatGPT connect. |
-| **OpenRouter** | Prepaid | Pays for everything the AI generates — text, images, speech, music, video. This is the bill that actually moves, and **each user brings their own account**: the key is saved per user in Settings, not deployed with the app. |
+| **OpenRouter** | Prepaid | Pays for everything the AI generates — text, images, speech, music, video. **Each user brings their own account**: the key is saved per user in Settings, and there is no shared key in the deployment. |
 | **GitHub** | Free | Holds the code. Vercel deploys from it on every push. |
 | An email account | — | Sends password resets. Gmail works with an App Password. |
 
@@ -62,19 +62,18 @@ Import the GitHub repository into Vercel. Before the first deploy, add every
 variable listed in `.env.example` under **Settings → Environment Variables**.
 That file explains what each one is and where to get it.
 
-Two of them need generating rather than copying:
+One of them needs generating rather than copying:
 
 - `API_KEY_ENCRYPTION_KEY` — run
   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
   and paste the result. It encrypts the OpenRouter key each user saves, so
   losing or changing it means everyone has to paste theirs again.
-- `NEXT_PUBLIC_APP_URL` — the address the app will live at, no trailing slash.
-  Deploy once to find out what Vercel assigns, then set this and redeploy.
+That is the only one. `NEXT_PUBLIC_APP_URL` is optional — the connector URL
+comes from whatever domain the browser is on, and metadata falls back to the
+production domain Vercel assigns. Set it only for a custom domain.
 
-`OPENROUTER_API_KEY` is deliberately **not** one of them. Leave it unset: each
-account adds its own key after signing up (step 6), and its own OpenRouter
-account is billed. Set it only as a temporary shared fallback — every user
-without a key of their own then spends from it.
+There is no `OPENROUTER_API_KEY` variable at all. Each account adds its own key
+after signing up (step 6) and is billed for its own generation.
 
 ### 4. Turn on Supabase authentication
 

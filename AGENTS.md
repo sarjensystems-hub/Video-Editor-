@@ -33,13 +33,21 @@
 ## Keys belong to users
 
 - Generation runs on the signed-in account's own OpenRouter key, resolved
-  per request through `lib/openrouter-key.ts`. Never read
-  `process.env.OPENROUTER_API_KEY` directly — that variable is only a
-  deployment-wide fallback, and reading it in new code silently bills the
-  deployment owner for someone else's work.
+  per request through `lib/openrouter-key.ts`. There is no deployment-wide
+  key and no fallback: reintroducing one puts the deployment owner back on
+  the hook for everyone's generation, and a guard test fails if any file so
+  much as names `OPENROUTER_API_KEY`.
 - A new route that can reach OpenRouter must be wrapped in
   `withOpenRouterKeyScope` (or, for MCP, run inside `withUserOpenRouterKey`),
   or it will fall through to that fallback.
+
+## Addresses come from the request
+
+- `lib/app-url.ts` answers "where does this deployment live". Per-request code
+  uses `requestOrigin()`, which is right on every domain the app answers on;
+  only build-time metadata falls back to the environment. Do not reintroduce a
+  placeholder host — the old one shipped inside the MCP URL users were told to
+  paste into ChatGPT.
 
 ## Row-level security
 

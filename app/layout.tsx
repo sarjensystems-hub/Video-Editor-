@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import "./globals.css";
 import AuthHashHandler from "./AuthHashHandler";
 import { BRAND } from "@/lib/brand";
+import { appUrl } from "@/lib/app-url";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,8 +24,7 @@ const fraunces = Fraunces({
   style: ["italic", "normal"],
 });
 
-const configuredSiteUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-const SITE_URL = configuredSiteUrl && configuredSiteUrl.length > 0 ? configuredSiteUrl : "https://studio.example.com";
+const SITE_URL = appUrl();
 
 /**
  * There is no public site to optimise for, so this is the minimum a browser

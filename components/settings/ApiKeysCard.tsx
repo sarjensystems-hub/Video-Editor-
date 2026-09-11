@@ -173,9 +173,8 @@ export default function ApiKeysCard({ initialStatus }: { initialStatus: OpenRout
 
       {!status.configured && (
         <p className="mt-4 text-xs leading-relaxed text-ink-faint">
-          {status.fallbackAvailable
-            ? "This deployment still has a shared key configured, so generation works without your own. Adding one moves your usage onto your own OpenRouter billing."
-            : "Without a key, generation is unavailable on this account — everything else keeps working."}
+          Until a key is saved, generation is unavailable on this account — everything else keeps
+          working. There is no shared key behind it.
         </p>
       )}
     </section>

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MissingOpenRouterKeyError,
   getOpenRouterKey,
@@ -6,18 +6,7 @@ import {
   runWithOpenRouterKey,
 } from "./openrouter-key";
 
-const ORIGINAL_ENV = process.env.OPENROUTER_API_KEY;
-
 describe("request-scoped OpenRouter key", () => {
-  beforeEach(() => {
-    delete process.env.OPENROUTER_API_KEY;
-  });
-
-  afterEach(() => {
-    if (ORIGINAL_ENV === undefined) delete process.env.OPENROUTER_API_KEY;
-    else process.env.OPENROUTER_API_KEY = ORIGINAL_ENV;
-  });
-
   it("uses the key belonging to the request", async () => {
     const key = await runWithOpenRouterKey(async () => "sk-or-user", () => getOpenRouterKey());
     expect(key).toBe("sk-or-user");
@@ -45,23 +34,15 @@ describe("request-scoped OpenRouter key", () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  it("prefers the user's own key over the deployment fallback", async () => {
-    process.env.OPENROUTER_API_KEY = "sk-or-shared";
-    const key = await runWithOpenRouterKey(async () => "sk-or-mine", () => getOpenRouterKey());
-    expect(key).toBe("sk-or-mine");
+  it("has nothing to fall back on when the account has no key", async () => {
+    expect(await runWithOpenRouterKey(async () => null, () => getOpenRouterKey())).toBeNull();
   });
 
-  it("falls back to the deployment key only when the account has none", async () => {
-    process.env.OPENROUTER_API_KEY = "sk-or-shared";
-    const key = await runWithOpenRouterKey(async () => null, () => getOpenRouterKey());
-    expect(key).toBe("sk-or-shared");
-  });
-
-  it("resolves to nothing outside a request when no fallback is set", async () => {
+  it("resolves to nothing outside a request scope", async () => {
     expect(await getOpenRouterKey()).toBeNull();
   });
 
-  it("asks the user to add a key when neither source has one", async () => {
+  it("asks the user to add a key when the account has none", async () => {
     await expect(
       runWithOpenRouterKey(async () => null, () => requireOpenRouterKey()),
     ).rejects.toBeInstanceOf(MissingOpenRouterKeyError);
