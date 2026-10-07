@@ -15,21 +15,12 @@ export function isTrustedMediaUrl(raw: string): boolean {
   }
   if (url.protocol !== "https:") return false;
 
-  const r2 = process.env.R2_PUBLIC_BASE_URL;
-  if (r2) {
-    try {
-      if (url.hostname === new URL(r2).hostname) return true;
-    } catch {
-      // A malformed env var must not make every URL trusted.
-    }
-  }
-
   const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (supabase) {
     try {
       if (url.hostname === new URL(supabase).hostname && url.pathname.includes("/storage/")) return true;
     } catch {
-      // As above.
+      // A malformed env var must not make every URL trusted.
     }
   }
 

@@ -173,7 +173,7 @@ export default function CreativeEditor({
   const deleteProject = async () => {
     if (
       !window.confirm(
-        `Delete "${title}"? This permanently removes the project and its render history. Generated assets are kept.`,
+        `Delete "${title}"? This permanently removes the project, its render history and its stored files. Media another project still uses is kept.`,
       )
     ) {
       return;

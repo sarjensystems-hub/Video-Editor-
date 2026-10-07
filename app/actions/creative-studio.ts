@@ -8,6 +8,7 @@ import { createCanonicalCreativeFixture } from "@/lib/creative/fixtures";
 import type { CreativeDocument } from "@/lib/creative/schema";
 import { validateCreativeDocument } from "@/lib/creative/validate";
 import { createRevisionSnapshot } from "@/lib/creative/persistence";
+import { deleteCreativeProjectWithFiles } from "@/lib/creative/project-delete";
 
 export type CreativeActionResult<T = undefined> =
   | { ok: true; data: T }
@@ -170,23 +171,21 @@ export async function getCreativeProject(projectId: string): Promise<CreativeAct
 }
 
 /**
- * Deleting a project cascades its revisions and render jobs (creative_assets
- * keeps its rows with project_id set to null instead — generated media
- * outlives the project it was made for). Nothing here deletes the underlying
- * R2 objects; the DB rows are what listings and ownership checks read.
+ * Deletes the project, its revisions and render history, and the stored files
+ * that belonged only to it — see lib/creative/project-delete.ts for exactly
+ * what is kept and why.
  */
 export async function deleteCreativeProject(projectId: string): Promise<CreativeActionResult> {
   const auth = await authenticatedClient();
   if (!auth) return { ok: false, error: "Unauthorized" };
   const { supabase, user } = auth;
 
-  const { error, count } = await supabase
-    .from("creative_projects")
-    .delete({ count: "exact" })
-    .eq("id", projectId)
-    .eq("user_id", user.id);
-  if (error) return { ok: false, error: error.message };
-  if (!count) return { ok: false, error: "Project not found" };
+  try {
+    const { found } = await deleteCreativeProjectWithFiles(supabase, user.id, projectId);
+    if (!found) return { ok: false, error: "Project not found" };
+  } catch (cause) {
+    return { ok: false, error: cause instanceof Error ? cause.message : "Could not delete the project" };
+  }
 
   revalidatePath("/dashboard/creative-studio");
   return { ok: true, data: undefined };

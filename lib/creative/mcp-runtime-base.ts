@@ -31,6 +31,7 @@ import { validateCreativeDocument } from "./validate";
 import { describeCreativeSchema, MAX_TRANSACTION_OPERATIONS, type CreativeSchemaGuideSection } from "./schema-guide";
 import { creativeCapabilityDigest } from "./capability-map";
 import { withInlineImages, type InlineImage } from "../mcp-server/inline-images";
+import { userStoragePath } from "@/lib/storage-paths";
 
 /**
  * The ChatGPT-facing Creative Studio surface.
@@ -453,7 +454,7 @@ async function renderProject(context: McpUserContext, request: CreativeProjectRe
         document,
         assets,
         options: requestedOptions,
-        outputKey: `creative-renders/${context.user.id}/${job.id}.mp4`,
+        outputKey: userStoragePath(context.user.id, "renders", `${job.id}.mp4`),
       });
       const now = new Date().toISOString();
       const { error: handleError } = await renderSupabase.from("creative_render_jobs").update({

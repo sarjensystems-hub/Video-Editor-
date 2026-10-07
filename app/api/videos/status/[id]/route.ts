@@ -17,6 +17,7 @@ import { uploadAnyBytes } from "@/lib/storage";
 import type { VideoGenerationRow } from "@/lib/video-gen";
 import { pollVideoJob, downloadVideoContent } from "@/lib/video-gen-api";
 import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
+import { userStoragePath } from "@/lib/storage-paths";
 
 export const maxDuration = 60;
 
@@ -74,7 +75,7 @@ async function handleGET(
     try {
       const { bytes, contentType } = await downloadVideoContent(current.openrouter_job_id);
       const ext  = contentType.includes("mp4") ? "mp4" : contentType.split("/")[1] || "mp4";
-      const path = `${user.id}/video-${current.id}.${ext}`;
+      const path = userStoragePath(user.id, "videos", `${current.id}.${ext}`);
       const url  = await uploadAnyBytes(bytes, path, contentType);
 
       if (!url) throw new Error("Failed to store the generated video.");

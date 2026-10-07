@@ -5,15 +5,13 @@ const ORIGINAL = { ...process.env };
 
 describe("trusting a stored media URL", () => {
   beforeEach(() => {
-    process.env.R2_PUBLIC_BASE_URL = "https://pub-abc123.r2.dev";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://proj.supabase.co";
   });
   afterEach(() => {
     process.env = { ...ORIGINAL };
   });
 
-  it("accepts our own storage hosts", () => {
-    expect(isTrustedMediaUrl("https://pub-abc123.r2.dev/creative-renders/a/b.mp4")).toBe(true);
+  it("accepts our own storage host", () => {
     expect(isTrustedMediaUrl("https://proj.supabase.co/storage/v1/object/public/x.mp4")).toBe(true);
   });
 
@@ -22,24 +20,23 @@ describe("trusting a stored media URL", () => {
     // Right host, but not the storage path.
     expect(isTrustedMediaUrl("https://proj.supabase.co/rest/v1/secrets")).toBe(false);
     // A lookalike host must not pass.
-    expect(isTrustedMediaUrl("https://pub-abc123.r2.dev.evil.test/x.mp4")).toBe(false);
+    expect(isTrustedMediaUrl("https://proj.supabase.co.evil.test/storage/v1/object/public/x.mp4")).toBe(false);
   });
 
   it("refuses anything that is not https", () => {
-    expect(isTrustedMediaUrl("http://pub-abc123.r2.dev/x.mp4")).toBe(false);
+    expect(isTrustedMediaUrl("http://proj.supabase.co/storage/v1/object/public/x.mp4")).toBe(false);
     expect(isTrustedMediaUrl("file:///etc/passwd")).toBe(false);
     expect(isTrustedMediaUrl("not a url")).toBe(false);
   });
 
   it("trusts nothing when no storage host is configured", () => {
-    delete process.env.R2_PUBLIC_BASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    expect(isTrustedMediaUrl("https://pub-abc123.r2.dev/x.mp4")).toBe(false);
+    expect(isTrustedMediaUrl("https://proj.supabase.co/storage/v1/object/public/x.mp4")).toBe(false);
   });
 
   it("does not trust everything when the env var is malformed", () => {
-    process.env.R2_PUBLIC_BASE_URL = "not-a-url";
-    expect(isTrustedMediaUrl("https://evil.test/x.mp4")).toBe(false);
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "not-a-url";
+    expect(isTrustedMediaUrl("https://evil.test/storage/x.mp4")).toBe(false);
   });
 });
 

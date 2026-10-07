@@ -10,6 +10,7 @@ import { getRuntimeCreativeProject, registerRuntimeCreativeAsset } from "@/lib/c
 import { InsufficientCreditsError, withCredits } from "@/lib/creative/metering";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
 import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
+import { userStoragePath } from "@/lib/storage-paths";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -61,7 +62,7 @@ async function handlePOST(request: Request) {
       const candidate = candidates[index];
       const crop = pixelCropFromNormalized(candidate.box, imageWidth, imageHeight);
       const bytes = await sharp(normalized.data).extract(crop).png().toBuffer();
-      const storagePath = `creative-assets/${user.id}/decomposition/${crypto.randomUUID()}-${candidate.role}.png`;
+      const storagePath = userStoragePath(user.id, "assets", `decomposition/${crypto.randomUUID()}-${candidate.role}.png`);
       const url = await uploadAnyBytes(bytes, storagePath, "image/png");
       if (!url) throw new Error(`Could not persist decomposed candidate ${candidate.label}`);
       const asset = await registerRuntimeCreativeAsset(context, {

@@ -64,14 +64,7 @@ describe("MCP image upload core", () => {
     );
   });
 
-  it("builds a user-scoped dated storage path without exposing the original filename", () => {
-    expect(
-      buildMcpImageStoragePath(
-        "user-123",
-        "asset-456",
-        "image/webp",
-        new Date("2026-08-26T00:00:00.000Z"),
-      ),
-    ).toBe("user-123/mcp/images/2026/08/asset-456.webp");
+  it("stores in the user's images folder without exposing the original filename", () => {
+    expect(buildMcpImageStoragePath("user-123", "asset-456", "image/webp")).toBe("user-123/images/asset-456.webp");
   });
 });

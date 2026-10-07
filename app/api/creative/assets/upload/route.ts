@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveSiteId } from "@/lib/active-site";
 import { uploadAnyBytes } from "@/lib/storage";
 import { normalizeCreativeAssetKind } from "@/lib/creative/persistence";
+import { userStoragePath } from "@/lib/storage-paths";
 
 export const runtime = "nodejs";
 
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
   const requestedKind = String(form.get("kind") ?? "").trim();
   const kind = normalizeCreativeAssetKind(requestedKind || inferKind(contentType));
   const filename = safeFilename(file.name);
-  const storagePath = `creative-assets/${user.id}/${crypto.randomUUID()}-${filename}`;
+  const storagePath = userStoragePath(user.id, "assets", `${crypto.randomUUID()}-${filename}`);
   const bytes = new Uint8Array(await file.arrayBuffer());
   const url = await uploadAnyBytes(bytes, storagePath, contentType);
   if (!url) return NextResponse.json({ error: "Asset upload failed" }, { status: 502 });

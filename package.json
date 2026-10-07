@@ -12,7 +12,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1050.0",
     "@remotion/vercel": "4.0.517",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",

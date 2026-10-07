@@ -1,23 +1,19 @@
 /**
- * Object storage adapter.
+ * Object storage: one Supabase Storage bucket, one folder per user.
  *
- * Writes go to **Cloudflare R2** when configured (the production setup);
- * otherwise they fall back to **Supabase Storage** so local dev without R2
- * keeps working. Reads continue to work for any URL ever returned — old
- * Supabase URLs in the DB stay valid, new uploads point at R2.
- *
- * Each helper returns the public URL on success, or `null` on failure.
- * Failures are logged loudly so storage outages or quota issues surface
- * in the function logs instead of silently producing image-less posts.
+ * Every path is built by `lib/storage-paths.ts`, so every file sits under
+ * `<userId>/…`. Uploads return the public URL or `null` on failure, logged
+ * loudly; deletes take the URLs the database recorded and remove only files
+ * inside the caller's own folder.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { isR2Configured, r2Upload } from "@/lib/r2";
 import type { AIImageResult } from "@/lib/image-gen";
+import { storagePathFromPublicUrl, userStoragePath } from "@/lib/storage-paths";
 
-const BUCKET = "article-images";
+export const STORAGE_BUCKET = "article-images";
 
 /**
  * The Supabase client uploads are made with, for requests that do not
@@ -31,9 +27,9 @@ const BUCKET = "article-images";
  * step because there was nowhere to put it.
  *
  * The MCP route already holds a client authorised for the caller, so it opens
- * this scope with that client and every upload underneath uses it — including
- * work that finishes after the response, since the scope survives `after()`.
- * Browser routes open no scope and keep using their cookie session.
+ * this scope with that client and every storage call underneath uses it —
+ * including work that finishes after the response, since the scope survives
+ * `after()`. Browser routes open no scope and keep using their cookie session.
  */
 const storageClientScope = new AsyncLocalStorage<SupabaseClient>();
 
@@ -41,134 +37,109 @@ export function runWithStorageClient<T>(client: SupabaseClient, fn: () => Promis
   return storageClientScope.run(client, fn);
 }
 
-async function uploadClient(): Promise<SupabaseClient> {
+async function storageClient(): Promise<SupabaseClient> {
   return storageClientScope.getStore() ?? (await createClient());
 }
 
-function logFailure(prefix: string, err: unknown) {
-  const msg = err instanceof Error ? err.message : String(err);
-  console.error(`[storage] ${prefix} — upload FAILED: ${msg}. Image will be missing from the post. If you've hit Supabase Storage quota, set the R2_* env vars to route uploads to Cloudflare R2.`);
+/** Uploads bytes to `path` and returns the public URL, or null on failure. */
+export async function uploadAnyBytes(
+  bytes: Uint8Array,
+  path: string,
+  contentType: string,
+): Promise<string | null> {
+  try {
+    const supabase = await storageClient();
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, bytes, { contentType, upsert: true });
+    if (error) throw new Error(error.message);
+    return supabase.storage.from(STORAGE_BUCKET).getPublicUrl(data.path).data.publicUrl;
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    console.error(`[storage] upload of ${path} failed: ${message}`);
+    return null;
+  }
 }
 
-/**
- * Persist an `AIImageResult` (URL or base64) returned from any of the
- * `lib/image-gen.ts` helpers. Returns the public URL, or null on failure.
- *
- * Routes that need custom JPEG re-encoding (social posts, where text edges
- * matter) still decode/sharp the result themselves — see
- * `app/api/ai/social/generate/route.ts:resolveImageUrl`.
- */
+/** Persists an image from `lib/image-gen.ts` into the user's images folder. */
 export async function uploadAIImage(
   result: AIImageResult,
   userId: string,
-  label:  string,
+  label: string,
 ): Promise<string | null> {
   if (!result) return null;
-  const path = imageStoragePath(userId, label);
-  if ("url" in result) return uploadImageFromUrl(result.url, path);
-  return uploadBase64Image(result.b64, path);
+  try {
+    let bytes: Uint8Array;
+    let contentType = "image/png";
+    if ("url" in result) {
+      const response = await fetch(result.url);
+      if (!response.ok) throw new Error(`source image returned ${response.status}`);
+      contentType = response.headers.get("content-type") ?? "image/jpeg";
+      bytes = new Uint8Array(await response.arrayBuffer());
+    } else {
+      bytes = new Uint8Array(Buffer.from(result.b64, "base64"));
+    }
+    const extension = contentType.includes("jpeg") ? "jpg" : contentType.split("/")[1] ?? "png";
+    const name = `${label}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
+    return await uploadAnyBytes(bytes, userStoragePath(userId, "images", name), contentType);
+  } catch (cause) {
+    console.error(`[storage] could not persist generated image: ${cause instanceof Error ? cause.message : cause}`);
+    return null;
+  }
 }
 
 /**
- * Download an image from a hosted URL and upload it to persistent storage.
- * Returns the public URL, or null on failure.
+ * Removes the stored files behind `urls`, which are URLs this app recorded in
+ * the database (asset URLs, render outputs, video URLs).
+ *
+ * Only files in our own bucket, on our own Supabase project and inside
+ * `userId`'s folder are touched. That boundary matters because a
+ * connector request's client bypasses row-level security, and a URL column
+ * is data: without the check, a crafted URL could name someone else's file.
+ *
+ * Best-effort by design: a file that cannot be removed is logged and
+ * reported, never allowed to block the database delete the user asked for.
  */
-export async function uploadImageFromUrl(
-  imageUrl: string,
-  filename: string,
-): Promise<string | null> {
-  try {
-    const res = await fetch(imageUrl);
-    if (!res.ok) {
-      console.error(`[storage] Failed to fetch source image from ${imageUrl}: ${res.status}`);
+export async function deleteUserFiles(
+  userId: string,
+  urls: Array<string | null | undefined>,
+): Promise<{ removed: number; skipped: number; notRemoved: number }> {
+  const ownHost = (() => {
+    try {
+      return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").host;
+    } catch {
       return null;
     }
-    const contentType = res.headers.get("content-type") ?? "image/jpeg";
-    const buffer = Buffer.from(await res.arrayBuffer());
-    return await putBytes(filename, buffer, contentType);
-  } catch (e) {
-    logFailure("uploadImageFromUrl", e);
-    return null;
+  })();
+
+  const paths = new Set<string>();
+  let skipped = 0;
+  for (const url of urls) {
+    if (!url) continue;
+    let host: string | null = null;
+    try {
+      host = new URL(url).host;
+    } catch {
+      host = null;
+    }
+    const path = storagePathFromPublicUrl(url, STORAGE_BUCKET);
+    if (!path || !ownHost || host !== ownHost || !path.startsWith(`${userId}/`)) {
+      skipped += 1;
+      continue;
+    }
+    paths.add(path);
   }
-}
+  if (paths.size === 0) return { removed: 0, skipped, notRemoved: 0 };
 
-/** Generate a unique storage path scoped to a user. */
-export function imageStoragePath(userId: string, label: string): string {
-  const ts = Date.now();
-  const rand = Math.random().toString(36).slice(2, 7);
-  return `${userId}/${label}-${ts}-${rand}.jpg`;
-}
-
-/** Upload raw bytes (PNG/JPEG) directly. */
-export async function uploadImageBytes(
-  bytes: Uint8Array,
-  filename: string,
-  contentType = "image/png",
-): Promise<string | null> {
   try {
-    return await putBytes(filename, bytes, contentType);
-  } catch (e) {
-    logFailure("uploadImageBytes", e);
-    return null;
+    const supabase = await storageClient();
+    const { data, error } = await supabase.storage.from(STORAGE_BUCKET).remove([...paths]);
+    if (error) throw new Error(error.message);
+    const removed = data?.length ?? 0;
+    // remove() leaves already-missing files out of `data` rather than erroring.
+    return { removed, skipped, notRemoved: paths.size - removed };
+  } catch (cause) {
+    console.error(`[storage] could not delete ${paths.size} file(s): ${cause instanceof Error ? cause.message : cause}`);
+    return { removed: 0, skipped, notRemoved: paths.size };
   }
-}
-
-/** Upload a base64-encoded image (e.g. from OpenRouter / gpt-image). */
-export async function uploadBase64Image(
-  base64: string,
-  filename: string,
-): Promise<string | null> {
-  try {
-    const buffer = Buffer.from(base64, "base64");
-    return await putBytes(filename, buffer, "image/png");
-  } catch (e) {
-    logFailure("uploadBase64Image", e);
-    return null;
-  }
-}
-
-/**
- * One-shot byte uploader used as a convenience for routes that handle their
- * own file objects (e.g. the product-image upload endpoint). Returns the
- * public URL or null.
- */
-export async function uploadAnyBytes(
-  bytes: Uint8Array,
-  filename: string,
-  contentType: string,
-): Promise<string | null> {
-  try {
-    return await putBytes(filename, bytes, contentType);
-  } catch (e) {
-    logFailure("uploadAnyBytes", e);
-    return null;
-  }
-}
-
-/* ── internal ────────────────────────────────────────────────────────────
-   The single write path. Tries R2 first, Supabase second. Throws on the
-   chosen backend's error so the caller's catch block surfaces a single
-   failure source instead of swallowing two layers. */
-async function putBytes(
-  filename: string,
-  bytes: Uint8Array | Buffer,
-  contentType: string,
-): Promise<string> {
-  if (isR2Configured()) {
-    return r2Upload(filename, bytes, contentType);
-  }
-
-  const supabase = await uploadClient();
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .upload(filename, bytes, { contentType, upsert: true });
-  if (error) {
-    /* Decorate the error so quota issues are obvious. */
-    const msg = /exceed|quota|limit|payload too large/i.test(error.message)
-      ? `Supabase Storage quota exceeded (${error.message}). Configure R2_* env vars to switch to Cloudflare R2.`
-      : error.message;
-    throw new Error(msg);
-  }
-  const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(data.path);
-  return publicUrl;
 }

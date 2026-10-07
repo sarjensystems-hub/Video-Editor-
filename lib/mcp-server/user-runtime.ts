@@ -5,6 +5,7 @@ import { uploadAnyBytes } from "../storage";
 import type { VideoJobState } from "../video-gen";
 import { getVideoProvider } from "./provider";
 import { parseGenerateVideoRequest, type VideoMode, type VideoProviderName } from "./types";
+import { userStoragePath } from "@/lib/storage-paths";
 import {
   serializeUserVideoJob,
   UserVideoOrchestrator,
@@ -254,7 +255,7 @@ function createUserOrchestrator(context: McpUserContext) {
     videoGenerationCost,
     async (job, bytes, contentType) => {
       const extension = extensionFromContentType(contentType);
-      return uploadAnyBytes(bytes, `${job.userId}/video-${job.id}.${extension}`, contentType);
+      return uploadAnyBytes(bytes, userStoragePath(job.userId, "videos", `${job.id}.${extension}`), contentType);
     },
   );
 }

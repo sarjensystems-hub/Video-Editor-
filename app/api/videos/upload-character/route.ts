@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { uploadAnyBytes } from "@/lib/storage";
+import { userStoragePath } from "@/lib/storage-paths";
 
 export const maxDuration = 30;
 
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
 
   const bytes = Buffer.from(await file.arrayBuffer());
   const ext   = file.type.split("/")[1];
-  const path  = `${user.id}/character-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const path  = userStoragePath(user.id, "characters", `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`);
 
   const url = await uploadAnyBytes(bytes, path, file.type);
   if (!url) return NextResponse.json({ error: "Upload failed (see server logs)" }, { status: 500 });

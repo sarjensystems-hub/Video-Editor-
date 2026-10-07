@@ -14,9 +14,8 @@ vi.mock("@/lib/supabase/server", () => ({
   },
 }));
 
-vi.mock("@/lib/r2", () => ({ isR2Configured: () => false, r2Upload: vi.fn() }));
 
-import { runWithStorageClient, uploadAnyBytes } from "./storage";
+import { deleteUserFiles, runWithStorageClient, uploadAnyBytes } from "./storage";
 
 function fakeClient(base: string) {
   const upload = vi.fn(async (path: string) => ({ data: { path }, error: null }));
@@ -68,5 +67,55 @@ describe("storage upload client", () => {
   it("is opened by the MCP route, which has no cookies to fall back on", () => {
     const route = readFileSync(resolve(__dirname, "..", join("app", "api", "mcp", "route.ts")), "utf8");
     expect(route).toContain("runWithStorageClient(context.supabase");
+  });
+});
+
+describe("deleting a user's files", () => {
+  const base = "https://proj.supabase.co/storage/v1/object/public/article-images";
+
+  function removingClient() {
+    const remove = vi.fn(async (paths: string[]) => ({ data: paths.map((name) => ({ name })), error: null }));
+    const client = { storage: { from: () => ({ remove }) } } as unknown as SupabaseClient;
+    return { client, remove };
+  }
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://proj.supabase.co";
+  });
+
+  it("removes files inside the user's own folder", async () => {
+    const { client, remove } = removingClient();
+    const result = await runWithStorageClient(client, () =>
+      deleteUserFiles("user-1", [`${base}/user-1/renders/a.mp4`, `${base}/user-1/assets/b.png`]),
+    );
+    expect(remove).toHaveBeenCalledWith(["user-1/renders/a.mp4", "user-1/assets/b.png"]);
+    expect(result).toEqual({ removed: 2, skipped: 0, notRemoved: 0 });
+  });
+
+  /**
+   * Connector requests run with a client that bypasses row-level security,
+   * and asset URLs are stored data. Without this boundary a crafted URL could
+   * name another user's file, or one in another Supabase project.
+   */
+  it("never touches another user's folder or another host", async () => {
+    const { client, remove } = removingClient();
+    const result = await runWithStorageClient(client, () =>
+      deleteUserFiles("user-1", [
+        `${base}/user-2/renders/theirs.mp4`,
+        "https://evil.supabase.co/storage/v1/object/public/article-images/user-1/x.mp4",
+        `${base}/user-1/../user-2/x.mp4`,
+        "https://cdn.example.com/user-1/x.mp4",
+      ]),
+    );
+    expect(remove).not.toHaveBeenCalled();
+    expect(result.skipped).toBe(4);
+  });
+
+  it("removes each file once even when listed twice", async () => {
+    const { client, remove } = removingClient();
+    await runWithStorageClient(client, () =>
+      deleteUserFiles("user-1", [`${base}/user-1/videos/v.mp4`, `${base}/user-1/videos/v.mp4`, null]),
+    );
+    expect(remove).toHaveBeenCalledWith(["user-1/videos/v.mp4"]);
   });
 });

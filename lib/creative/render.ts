@@ -15,7 +15,8 @@ import { validateCreativeDocument } from "./validate";
 export interface CreativeRenderRequest {
   document: CreativeDocument;
   assets: CreativeRemotionAssetMap;
-  outputKey?: string;
+  /** Where the MP4 goes: always inside the owner's folder (see storage-paths). */
+  outputKey: string;
   options?: CreativeRenderWindowOptions;
   onProgress?: (progress: number, phase: string) => Promise<void> | void;
 }
@@ -331,7 +332,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
         sandboxId: sandbox.name,
         cmdId: command.cmdId,
         outputFile,
-        outputKey: request.outputKey ?? `creative-renders/${crypto.randomUUID()}.mp4`,
+        outputKey: request.outputKey,
         startedAtMs: Date.now(),
       };
     } catch (error) {
@@ -439,8 +440,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
       const buffer = toBuffer(bytes as Uint8Array | ArrayBuffer);
       if (buffer.byteLength <= 0) throw new Error("Renderer produced an empty file");
 
-      const key = request.outputKey ?? `creative-renders/${crypto.randomUUID()}.mp4`;
-      const url = await uploadAnyBytes(buffer, key, output.contentType || "video/mp4");
+      const url = await uploadAnyBytes(buffer, request.outputKey, output.contentType || "video/mp4");
       if (!url) throw new Error("Rendered video could not be persisted");
 
       await request.onProgress?.(1, "completed");

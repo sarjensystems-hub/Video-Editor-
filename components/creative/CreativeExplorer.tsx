@@ -217,7 +217,7 @@ export default function CreativeExplorer({
   function handleDeleteProject(project: ExplorerProject) {
     if (
       !window.confirm(
-        `Delete "${project.title}"? This permanently removes the project and its render history. Generated assets are kept.`,
+        `Delete "${project.title}"? This permanently removes the project, its render history and its stored files. Media another project still uses is kept.`,
       )
     ) {
       return;

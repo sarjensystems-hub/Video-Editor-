@@ -12,6 +12,7 @@ import { getCreativeDurationMs } from "@/lib/creative/evaluate";
 import { extractSceneDocument, findSceneExportWindow } from "@/lib/creative/scene-export";
 import { validateCreativeDocument } from "@/lib/creative/validate";
 import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
+import { userStoragePath } from "@/lib/storage-paths";
 
 export const runtime = "nodejs";
 
@@ -177,7 +178,7 @@ async function handlePOST(request: Request) {
       const handle = await creativeRenderAdapter.startDetached({
         document,
         assets,
-        outputKey: `creative-renders/${user.id}/${job.id}.mp4`,
+        outputKey: userStoragePath(user.id, "renders", `${job.id}.mp4`),
       });
       const { error: handleError } = await renderSupabase
         .from("creative_render_jobs")

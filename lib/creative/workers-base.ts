@@ -1,5 +1,6 @@
 import { generateSocialImage } from "../image-gen";
 import { audioExtensionFor, containerFromFormat } from "./audio-format";
+import { userStoragePath } from "@/lib/storage-paths";
 import {
   getRuntimeCreativeProject,
   registerRuntimeCreativeAsset,
@@ -129,7 +130,7 @@ export async function generateCreativeSpeechAsset(
   const speechExtension = audioExtensionFor(
     containerFromFormat(generated.contentType.split("/").pop()) ?? "mp3",
   );
-  const storagePath = `creative-audio/${context.userId}/${crypto.randomUUID()}.${speechExtension}`;
+  const storagePath = userStoragePath(context.userId, "audio", `${crypto.randomUUID()}.${speechExtension}`);
   const url = await uploadAnyBytes(generated.bytes, storagePath, generated.contentType);
   if (!url) throw new Error("Generated speech could not be persisted");
 
@@ -163,7 +164,7 @@ export async function addCreativeSfxAsset(
   const { generateDeterministicSfxWav } = await import("./sfx-library");
   const generated = generateDeterministicSfxWav(input.effectId);
   const { uploadAnyBytes } = await import("../storage");
-  const storagePath = `creative-audio/${context.userId}/sfx-${input.effectId}-${crypto.randomUUID()}.wav`;
+  const storagePath = userStoragePath(context.userId, "audio", `sfx-${input.effectId}-${crypto.randomUUID()}.wav`);
   const url = await uploadAnyBytes(generated.bytes, storagePath, generated.contentType);
   if (!url) throw new Error("Built-in sound effect could not be persisted");
   return registerRuntimeCreativeAsset(context, {
@@ -195,7 +196,7 @@ export async function generateCreativeMusicAsset(
   const extension = audioExtensionFor(
     containerFromFormat(generated.contentType.split("/").pop()) ?? "mp3",
   );
-  const storagePath = `creative-audio/${context.userId}/${crypto.randomUUID()}.${extension}`;
+  const storagePath = userStoragePath(context.userId, "audio", `${crypto.randomUUID()}.${extension}`);
   const url = await uploadAnyBytes(generated.bytes, storagePath, generated.contentType);
   if (!url) throw new Error("Generated music could not be persisted");
 

@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { userStoragePath } from "./storage-paths";
 
 export const MAX_MCP_FILE_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -144,9 +145,6 @@ export function buildMcpImageStoragePath(
   userId: string,
   assetId: string,
   contentType: SupportedMcpImageType,
-  now = new Date(),
 ): string {
-  const year = String(now.getUTCFullYear());
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-  return `${userId}/mcp/images/${year}/${month}/${assetId}.${imageExtensionForContentType(contentType)}`;
+  return userStoragePath(userId, "images", `${assetId}.${imageExtensionForContentType(contentType)}`);
 }

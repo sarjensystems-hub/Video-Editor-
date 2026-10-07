@@ -150,7 +150,7 @@ describe("creative still-frame render boundary", () => {
     readFile.mockResolvedValue(new Uint8Array([1, 2, 3, 4]));
     uploadAnyBytes.mockResolvedValue("https://cdn.example.com/render.mp4");
     const adapter = await importAdapter();
-    await adapter.render({ document: createCanonicalCreativeFixture(), assets: {} });
+    await adapter.render({ document: createCanonicalCreativeFixture(), assets: {}, outputKey: "user-1/renders/job.mp4" });
     const options = renderMediaOnVercel.mock.calls[0][0] as { concurrency?: number };
     expect(options.concurrency).toBe(1);
   });
@@ -160,7 +160,7 @@ describe("creative still-frame render boundary", () => {
     readFile.mockResolvedValue(new Uint8Array([1, 2, 3, 4]));
     uploadAnyBytes.mockResolvedValue("https://cdn.example.com/render.mp4");
     const adapter = await importAdapter();
-    await adapter.render({ document: createCanonicalCreativeFixture(), assets: {}, options: { startMs: 1000, endMs: 2500, quality: "draft" } });
+    await adapter.render({ document: createCanonicalCreativeFixture(), assets: {}, outputKey: "user-1/renders/job.mp4", options: { startMs: 1000, endMs: 2500, quality: "draft" } });
     expect(renderMediaOnVercel).toHaveBeenCalledWith(expect.objectContaining({ frameRange: [30, 74], scale: 0.5, crf: 28, jpegQuality: 65 }));
   });
 
@@ -169,7 +169,7 @@ describe("creative still-frame render boundary", () => {
     readFile.mockResolvedValue(new Uint8Array([1, 2, 3, 4]));
     uploadAnyBytes.mockResolvedValue("https://cdn.example.com/render.mp4");
     const adapter = await importAdapter();
-    await adapter.render({ document: createCanonicalCreativeFixture(), assets: {} });
+    await adapter.render({ document: createCanonicalCreativeFixture(), assets: {}, outputKey: "user-1/renders/job.mp4" });
     const options = renderMediaOnVercel.mock.calls[0][0] as { concurrency?: number };
     const vcpus = (sandboxCreate.mock.calls[0][0] as { resources?: { vcpus: number } }).resources?.vcpus ?? 0;
     expect(options.concurrency).toBeGreaterThan(1);
