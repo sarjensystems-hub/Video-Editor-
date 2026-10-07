@@ -27,22 +27,18 @@ as $$
   end
 $$;
 
-drop policy if exists "article_images_owner_insert" on storage.objects;
-drop policy if exists "article_images_owner_update" on storage.objects;
-drop policy if exists "article_images_owner_delete" on storage.objects;
+-- ALTER rather than DROP + CREATE. On the live project, dropping and
+-- recreating these policies stalled past a minute three times and rolled back,
+-- while ALTER POLICY applied immediately. lock_timeout makes any wait fail fast
+-- and retryably instead of hanging.
+set lock_timeout = '10s';
 
-create policy "article_images_owner_insert"
-  on storage.objects for insert
-  to authenticated
+alter policy "article_images_owner_insert" on storage.objects
   with check (bucket_id = 'article-images' and public.article_images_path_owner(name) = auth.uid()::text);
 
-create policy "article_images_owner_update"
-  on storage.objects for update
-  to authenticated
+alter policy "article_images_owner_update" on storage.objects
   using (bucket_id = 'article-images' and public.article_images_path_owner(name) = auth.uid()::text)
   with check (bucket_id = 'article-images' and public.article_images_path_owner(name) = auth.uid()::text);
 
-create policy "article_images_owner_delete"
-  on storage.objects for delete
-  to authenticated
+alter policy "article_images_owner_delete" on storage.objects
   using (bucket_id = 'article-images' and public.article_images_path_owner(name) = auth.uid()::text);
