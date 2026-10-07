@@ -11,11 +11,39 @@
  * in the function logs instead of silently producing image-less posts.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { isR2Configured, r2Upload } from "@/lib/r2";
 import type { AIImageResult } from "@/lib/image-gen";
 
 const BUCKET = "article-images";
+
+/**
+ * The Supabase client uploads are made with, for requests that do not
+ * authenticate through browser cookies.
+ *
+ * Writes used to go through `createClient()` from `@/lib/supabase/server`,
+ * which reads the session cookie. An MCP request has no cookie — it carries a
+ * Bearer token — so every upload it made went out as the anonymous role, was
+ * refused by the bucket policy, and came back as `null`. The worst case was a
+ * finished video: generated and billed by OpenRouter, then lost at the last
+ * step because there was nowhere to put it.
+ *
+ * The MCP route already holds a client authorised for the caller, so it opens
+ * this scope with that client and every upload underneath uses it — including
+ * work that finishes after the response, since the scope survives `after()`.
+ * Browser routes open no scope and keep using their cookie session.
+ */
+const storageClientScope = new AsyncLocalStorage<SupabaseClient>();
+
+export function runWithStorageClient<T>(client: SupabaseClient, fn: () => Promise<T>): Promise<T> {
+  return storageClientScope.run(client, fn);
+}
+
+async function uploadClient(): Promise<SupabaseClient> {
+  return storageClientScope.getStore() ?? (await createClient());
+}
 
 function logFailure(prefix: string, err: unknown) {
   const msg = err instanceof Error ? err.message : String(err);
@@ -130,7 +158,7 @@ async function putBytes(
     return r2Upload(filename, bytes, contentType);
   }
 
-  const supabase = await createClient();
+  const supabase = await uploadClient();
   const { data, error } = await supabase.storage
     .from(BUCKET)
     .upload(filename, bytes, { contentType, upsert: true });

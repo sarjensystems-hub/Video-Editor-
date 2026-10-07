@@ -17,8 +17,10 @@ reference tables the earlier ones create.
    deployment uses in place of Cloudflare R2: `article-images` for media, and
    `creative-render-snapshots` for the render-cache metadata.
 10. `add_user_api_keys.sql` — each account's own OpenRouter key, encrypted at
-   rest. Without this table nobody can save a key, and generation only works
-   if the deployment still carries a fallback `OPENROUTER_API_KEY`.
+   rest. Without this table nobody can save a key, and nothing can generate.
+11. `fix_storage_owner_paths.sql` — lets owners upload to the namespaced paths
+   the app writes (`creative-audio/<uid>/…` and friends), not only `<uid>/…`.
+   Without it, generated audio, renders and previews are refused by storage.
 
 Every file is safe to re-run: they all use `if not exists`, so a partial run can
 simply be repeated from the top.
