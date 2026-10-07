@@ -9,6 +9,7 @@ import {
   type CreativeTransactionResult,
 } from "./transactions";
 import { validateCreativeDocument } from "./validate";
+import { resolveAssetClass } from "./asset-class";
 
 export interface CreativeRuntimeContext {
   supabase: SupabaseClient;
@@ -312,7 +313,7 @@ export async function listRuntimeCreativeAssets(
 ) {
   let query = context.supabase
     .from("creative_assets")
-    .select("id, project_id, kind, source, url, mime_type, filename, width, height, duration_ms, size_bytes, metadata, created_at")
+    .select("id, project_id, kind, asset_class, source, url, mime_type, filename, width, height, duration_ms, size_bytes, metadata, created_at")
     .eq("user_id", context.userId)
     .order("created_at", { ascending: false });
   if (projectId) query = query.eq("project_id", projectId);
@@ -326,6 +327,8 @@ export async function registerRuntimeCreativeAsset(
   input: {
     projectId?: string | null;
     kind: string;
+    /** What the asset is for; see lib/creative/asset-class.ts. Defaults from the kind. */
+    assetClass?: string | null;
     source: string;
     url: string;
     mimeType?: string | null;
@@ -350,6 +353,7 @@ export async function registerRuntimeCreativeAsset(
       site_id: context.siteId ?? null,
       project_id: input.projectId ?? null,
       kind: input.kind,
+      asset_class: resolveAssetClass(input.assetClass, input.kind),
       source: input.source,
       url: input.url,
       mime_type: input.mimeType ?? null,
@@ -361,7 +365,7 @@ export async function registerRuntimeCreativeAsset(
       storage_path: input.storagePath ?? null,
       metadata: input.metadata ?? {},
     })
-    .select("id, project_id, kind, source, url, mime_type, filename, width, height, duration_ms, size_bytes, metadata, created_at")
+    .select("id, project_id, kind, asset_class, source, url, mime_type, filename, width, height, duration_ms, size_bytes, metadata, created_at")
     .single();
   if (error || !data) throw new Error(error?.message ?? "Could not register asset");
   return data;

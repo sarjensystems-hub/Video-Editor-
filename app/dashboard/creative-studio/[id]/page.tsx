@@ -6,6 +6,7 @@ import {
 } from "@/app/actions/creative-studio";
 import CreativeEditor from "@/components/creative/CreativeEditor";
 import { createClient } from "@/lib/supabase/server";
+import { toEditorAsset } from "@/lib/creative/editor-asset";
 
 /**
  * The editor deliberately sits outside the dashboard's `(shell)` route group:
@@ -24,13 +25,7 @@ export default async function CreativeProjectPage({ params }: { params: Promise<
 
   const [revisions, assets] = await Promise.all([listCreativeRevisions(id), listCreativeAssets(id)]);
 
-  const editorAssets = assets.map((asset) => ({
-    id: String(asset.id),
-    kind: String(asset.kind),
-    url: String(asset.url),
-    filename: asset.filename == null ? null : String(asset.filename),
-    mimeType: asset.mime_type == null ? null : String(asset.mime_type),
-  }));
+  const editorAssets = assets.map((asset) => toEditorAsset(asset));
 
   const editorRevisions = revisions.map((revision) => ({
     id: String(revision.id),

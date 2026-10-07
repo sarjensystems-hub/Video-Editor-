@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { storagePathFromPublicUrl, userStoragePath } from "./storage-paths";
+import { isUserStoragePath, storagePathFromPublicUrl, userStoragePath } from "./storage-paths";
 
 describe("per-user storage paths", () => {
   it("puts every file inside the user's own folder", () => {
@@ -14,6 +14,15 @@ describe("per-user storage paths", () => {
     expect(() => userStoragePath("user-1", "audio", "a//b.wav")).toThrow();
     expect(() => userStoragePath("user-1/../user-2", "audio", "x.wav")).toThrow();
     expect(() => userStoragePath("", "audio", "x.wav")).toThrow();
+  });
+
+  it("accepts a reported upload path only inside the user's own folder", () => {
+    expect(isUserStoragePath("user-1", "assets", "user-1/assets/uploads/a.mp4")).toBe(true);
+    expect(isUserStoragePath("user-1", "assets", "user-2/assets/uploads/a.mp4")).toBe(false);
+    expect(isUserStoragePath("user-1", "assets", "user-1/audio/a.wav")).toBe(false);
+    expect(isUserStoragePath("user-1", "assets", "user-1/assets/../../user-2/assets/a.mp4")).toBe(false);
+    expect(isUserStoragePath("user-1", "assets", "user-1/assets/")).toBe(false);
+    expect(isUserStoragePath("user-1", "assets", 42)).toBe(false);
   });
 
   it("recovers the bucket path from one of our public URLs", () => {

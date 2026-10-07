@@ -27,6 +27,7 @@ async function handlePOST(request: Request) {
           prompt,
           format: normalizeCreativeImageFormat(body?.format),
           label: typeof body?.label === "string" ? body.label : undefined,
+          assetClass: typeof body?.asset_class === "string" ? body.asset_class : null,
           referenceImages: Array.isArray(body?.reference_images) ? body.reference_images.filter((value): value is string => typeof value === "string" && /^https:\/\//i.test(value)) : [],
         },
       ),

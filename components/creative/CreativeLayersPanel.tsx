@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -9,7 +10,9 @@ import {
   Lock,
   LockOpen,
   Music,
+  Plus,
   Square,
+  Tag,
   Type,
   Video,
 } from "lucide-react";
@@ -19,36 +22,59 @@ import { cn } from "@/components/ui/cn";
 import { createDefaultTransform } from "@/lib/creative/defaults";
 import type { CreativeDocument } from "@/lib/creative/schema";
 import type { CreativeTransaction } from "@/lib/creative/transactions";
+import type { EditorAsset } from "@/lib/creative/editor-asset";
+import {
+  CREATIVE_ASSET_CLASSES,
+  audioClipKindForClass,
+  type CreativeAssetClass,
+} from "@/lib/creative/asset-class";
+import { getCreativeDurationMs } from "@/lib/creative/evaluate";
+import { getCreativeSceneTimeline } from "@/lib/creative/remotion";
+import CreativeAssetForm from "./CreativeAssetForm";
 
-export interface EditorAsset {
-  id: string;
-  kind: string;
-  url: string;
-  filename?: string | null;
-  mimeType?: string | null;
-}
+/** The asset shelf's filter tabs, each a family of classes. */
+const SHELVES: Array<{ id: string; label: string; classes: CreativeAssetClass[]; uploadAs?: CreativeAssetClass }> = [
+  { id: "all", label: "All", classes: [] },
+  { id: "video", label: "Video", classes: ["footage", "render"], uploadAs: "footage" },
+  { id: "images", label: "Images", classes: ["image", "product", "logo", "character", "background"], uploadAs: "image" },
+  { id: "narration", label: "Narration", classes: ["narration"], uploadAs: "narration" },
+  { id: "music", label: "Music & SFX", classes: ["music", "sfx"], uploadAs: "music" },
+];
+
+export type { EditorAsset } from "@/lib/creative/editor-asset";
 
 export default function CreativeLayersPanel({
+  projectId,
   document: doc,
   sceneId,
   selectedIds,
   assets,
   onSelect,
   onTransaction,
-  onUpload,
+  onAssetSaved,
+  onNotice,
   bare,
 }: {
+  projectId: string;
   document: CreativeDocument;
   sceneId: string;
   selectedIds: string[];
   assets: EditorAsset[];
   onSelect: (ids: string[]) => void;
   onTransaction: (transaction: CreativeTransaction) => void;
-  onUpload: (file: File) => void;
+  /** A new upload, or an existing asset re-filed. */
+  onAssetSaved: (asset: EditorAsset) => void;
+  onNotice: (message: string) => void;
   /** Set inside a bottom sheet, where the surrounding surface is the sheet. */
   bare?: boolean;
 }) {
   const scene = doc.scenes.find((item) => item.id === sceneId) ?? doc.scenes[0];
+  const [shelf, setShelf] = useState("all");
+  const [form, setForm] = useState<{ asset: EditorAsset | null; initialClass: CreativeAssetClass | null } | null>(null);
+  const activeShelf = SHELVES.find((item) => item.id === shelf) ?? SHELVES[0];
+  const shelved = activeShelf.classes.length
+    ? assets.filter((asset) => (activeShelf.classes as string[]).includes(asset.assetClass))
+    : assets;
   // Topmost layer first, matching what the eye sees on the canvas.
   const stack = [...scene.elements].sort((a, b) => b.transform.zIndex - a.transform.zIndex);
 
@@ -113,7 +139,50 @@ export default function CreativeLayersPanel({
     onSelect([id]);
   };
 
+  /**
+   * Audio goes on the film's timeline, not into a scene. Narration and sound
+   * effects start where the current scene does; music starts at the top and
+   * ducks under any voice, since a bed is for the whole film.
+   */
+  const addAudio = (asset: EditorAsset) => {
+    const filmMs = getCreativeDurationMs(doc);
+    const kind = audioClipKindForClass(asset.assetClass);
+    const startMs = kind === "music" ? 0 : getCreativeSceneTimeline(doc).find((entry) => entry.sceneId === scene.id)?.startMs ?? 0;
+    const lengthMs = asset.durationMs ?? (kind === "music" ? filmMs : scene.durationMs);
+    const endMs = Math.min(filmMs, startMs + lengthMs);
+    if (endMs - startMs < 50) {
+      onNotice("There is no room left on the timeline for this clip.");
+      return;
+    }
+    onTransaction({
+      summary: `Add ${CREATIVE_ASSET_CLASSES[asset.assetClass as CreativeAssetClass]?.label ?? "audio"}`,
+      operations: [
+        {
+          type: "add_audio_clip",
+          clip: {
+            id: `${kind}-${crypto.randomUUID().slice(0, 8)}`,
+            name: asset.filename || CREATIVE_ASSET_CLASSES[asset.assetClass as CreativeAssetClass]?.label || "Audio",
+            assetId: asset.id,
+            kind,
+            startMs,
+            endMs,
+            sourceStartMs: 0,
+            gain: kind === "music" ? 0.6 : 1,
+            fadeOutMs: kind === "music" ? Math.min(1500, endMs - startMs) : 0,
+            ...(kind === "music" ? { duckUnderVoice: true, duckToGain: 0.2 } : {}),
+          },
+        },
+      ],
+    });
+    onNotice(`${asset.filename || "Audio"} added to the timeline at ${(startMs / 1000).toFixed(1)}s`);
+  };
+
   const addAsset = (asset: EditorAsset) => {
+    if (asset.kind === "audio") return addAudio(asset);
+    if (asset.kind !== "image" && asset.kind !== "video") {
+      onNotice("This file type cannot be placed on the canvas.");
+      return;
+    }
     const id = `${asset.kind}-${crypto.randomUUID().slice(0, 8)}`;
     const width = Math.min(doc.canvas.width * 0.78, 840);
     const height = Math.min(doc.canvas.height * 0.55, 650);
@@ -150,26 +219,14 @@ export default function CreativeLayersPanel({
           <Button variant="subtle" size="sm" onClick={addShape} className="flex-col gap-1 !h-auto py-2.5">
             <Square className="h-4 w-4" /> Shape
           </Button>
-          <label
-            className={cn(
-              "inline-flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg py-2.5",
-              "border border-transparent bg-canvas-subtle text-xs font-semibold text-ink-muted",
-              "transition-colors hover:bg-canvas-muted hover:text-ink",
-              "focus-within:ring-2 focus-within:ring-fire/40",
-            )}
+          <Button
+            variant="subtle"
+            size="sm"
+            onClick={() => setForm({ asset: null, initialClass: null })}
+            className="flex-col gap-1 !h-auto py-2.5"
           >
             <ImagePlus className="h-4 w-4" /> Upload
-            <input
-              type="file"
-              accept="image/*,video/*,audio/*"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) onUpload(file);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
+          </Button>
         </div>
       </Panel>
 
@@ -305,39 +362,125 @@ export default function CreativeLayersPanel({
         bare={bare}
         actions={<span className="text-[10px] tabular-nums text-ink-faint">{assets.length}</span>}
       >
-        {assets.length === 0 ? (
-          <EmptyNote>Upload an image or video, or let your assistant generate one.</EmptyNote>
-        ) : (
-          <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-2">
-            {assets.map((asset) => (
+        <div className="-mx-1 mb-3 flex gap-1 overflow-x-auto px-1 pb-1">
+          {SHELVES.map((item) => {
+            const count = item.classes.length
+              ? assets.filter((asset) => (item.classes as string[]).includes(asset.assetClass)).length
+              : assets.length;
+            return (
               <button
-                key={asset.id}
+                key={item.id}
                 type="button"
-                onClick={() => addAsset(asset)}
-                title={`Add ${asset.filename || asset.kind} to the scene`}
+                onClick={() => setShelf(item.id)}
+                aria-pressed={shelf === item.id}
                 className={cn(
-                  "group overflow-hidden rounded-xl border border-edge bg-canvas-subtle text-left",
-                  "transition-colors hover:border-fire/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fire/40",
+                  "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fire/40",
+                  shelf === item.id
+                    ? "border-fire/60 bg-fire-wash text-ink"
+                    : "border-edge text-ink-muted hover:bg-canvas-subtle",
                 )}
               >
-                <span className="grid aspect-square w-full place-items-center overflow-hidden bg-stage">
-                  {asset.kind === "image" ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={asset.url} alt="" loading="lazy" className="h-full w-full object-cover" />
-                  ) : asset.kind === "video" ? (
-                    <Video className="h-5 w-5 text-white/60" />
-                  ) : (
-                    <Music className="h-5 w-5 text-white/60" />
-                  )}
-                </span>
-                <span className="block truncate px-2 py-1.5 text-[10px] text-ink-muted">
-                  {asset.filename || asset.kind}
-                </span>
+                {item.label}
+                <span className="ml-1 tabular-nums text-ink-faint">{count}</span>
               </button>
-            ))}
+            );
+          })}
+        </div>
+
+        {shelved.length === 0 ? (
+          <div className="grid gap-2">
+            <EmptyNote>
+              {activeShelf.uploadAs
+                ? `No ${activeShelf.label.toLowerCase()} yet. Upload one, or ask your assistant to make it.`
+                : "Upload video, narration, music or images, or let your assistant generate them."}
+            </EmptyNote>
+          </div>
+        ) : (
+          <div className="grid max-h-80 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-2">
+            {shelved.map((asset) => {
+              const info = CREATIVE_ASSET_CLASSES[asset.assetClass as CreativeAssetClass];
+              return (
+                <div
+                  key={asset.id}
+                  className="group relative overflow-hidden rounded-xl border border-edge bg-canvas-subtle transition-colors hover:border-fire/50"
+                >
+                  <button
+                    type="button"
+                    onClick={() => addAsset(asset)}
+                    title={
+                      asset.kind === "audio"
+                        ? `Add ${asset.filename || "audio"} to the timeline`
+                        : `Add ${asset.filename || asset.kind} to the scene`
+                    }
+                    className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fire/40"
+                  >
+                    <span className="grid aspect-square w-full place-items-center overflow-hidden bg-stage">
+                      {asset.kind === "image" ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={asset.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+                      ) : asset.kind === "video" ? (
+                        <Video className="h-5 w-5 text-white/60" />
+                      ) : (
+                        <Music className="h-5 w-5 text-white/60" />
+                      )}
+                    </span>
+                    <span className="block px-2 pt-1.5">
+                      <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.05em] text-fire">
+                        {info?.label ?? asset.assetClass}
+                      </span>
+                      <span className="block truncate pb-1.5 text-[10px] text-ink-muted">
+                        {asset.filename || asset.kind}
+                        {asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ""}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ asset, initialClass: null })}
+                    aria-label={`Edit class and notes for ${asset.filename || asset.kind}`}
+                    title="Class and notes"
+                    className={cn(
+                      "absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-lg bg-black/55 text-white",
+                      "transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fire/60",
+                    )}
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
+
+        {activeShelf.uploadAs && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2 w-full"
+            onClick={() => setForm({ asset: null, initialClass: activeShelf.uploadAs ?? null })}
+          >
+            <Plus className="h-3.5 w-3.5" /> Upload {activeShelf.label.toLowerCase()}
+          </Button>
+        )}
       </Panel>
+
+      <CreativeAssetForm
+        open={form !== null}
+        onClose={() => setForm(null)}
+        projectId={projectId}
+        asset={form?.asset ?? null}
+        initialClass={form?.initialClass ?? null}
+        onSaved={(asset) => {
+          onAssetSaved(asset);
+          onNotice(
+            form?.asset
+              ? `${asset.filename || "Asset"} filed as ${CREATIVE_ASSET_CLASSES[asset.assetClass as CreativeAssetClass]?.label ?? asset.assetClass}`
+              : `${asset.filename || "File"} uploaded as ${CREATIVE_ASSET_CLASSES[asset.assetClass as CreativeAssetClass]?.label ?? asset.assetClass}. Your assistant can use it now.`,
+          );
+        }}
+      />
     </div>
   );
 }

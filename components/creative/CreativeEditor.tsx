@@ -196,37 +196,6 @@ export default function CreativeEditor({
     });
   }, []);
 
-  const upload = useCallback(
-    async (file: File) => {
-      setBusy(true);
-      setNotice(null);
-      try {
-        const form = new FormData();
-        form.set("projectId", projectId);
-        form.set("file", file);
-        const response = await fetch("/api/creative/assets/upload", { method: "POST", body: form });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error ?? "Asset upload failed");
-        const asset = payload.asset;
-        appendAssets([
-          {
-            id: asset.id,
-            kind: asset.kind,
-            url: asset.url,
-            filename: asset.filename ?? null,
-            mimeType: asset.mime_type ?? null,
-          },
-        ]);
-        setNotice(`${asset.filename || asset.kind} uploaded`);
-      } catch (error) {
-        setNotice(error instanceof Error ? error.message : String(error));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [projectId, appendAssets],
-  );
-
   const togglePlay = () => {
     if (!playing) {
       if (timeMs >= scene.durationMs - 1) setTimeMs(0);
@@ -312,13 +281,15 @@ export default function CreativeEditor({
 
   const layersPanel = (bare: boolean) => (
     <CreativeLayersPanel
+      projectId={projectId}
       document={state.document}
       sceneId={scene.id}
       selectedIds={state.selection.elementIds}
       assets={assets}
       onSelect={select}
       onTransaction={transact}
-      onUpload={upload}
+      onAssetSaved={(asset) => appendAssets([asset])}
+      onNotice={setNotice}
       bare={bare}
     />
   );

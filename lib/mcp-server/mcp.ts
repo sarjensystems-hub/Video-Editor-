@@ -4,6 +4,7 @@ import { renderCreativeCapabilityGuide } from "../creative/capability-map";
 import { documentSha256 } from "../creative/document-hash";
 import { creativeRenderCost, videoGenerationCost } from "../credit-costs";
 import { GEMINI_TTS_VOICES, GEMINI_TTS_VOICE_STYLES } from "../creative/audio-workers";
+import { CREATIVE_ASSET_CLASSES, CREATIVE_ASSET_CLASS_IDS, assetClassesForKind } from "../creative/asset-class";
 import { MAX_TRANSACTION_OPERATIONS } from "../creative/schema-guide";
 import { inlineImagesOf } from "./inline-images";
 
@@ -237,7 +238,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_get_creative_project",
-    description: "Read an authenticated Creative Studio project, its canonical CreativeDocument, current revision and registered assets. For a large project, read part of it instead: scene_ids and element_ids narrow the reply to what you are actually editing, and include adds back only the heavier blocks you need. A sliced reply is marked { partial: true } and carries `scenes` rather than `document`, because a document missing most of its scenes would fail its own validator and must never be round-tripped back. Slicing an eighteen-scene film down to the two scenes you are working on is the difference between four iterations and ten for the same effort. Use return: \"summary\" when you only need the shape and the overlap-aware scene timings. Use return: \"outline\" when you need to find an element before you can slice or edit it: every scene's resolved timing, every element's id/type/name/timing/hidden/locked/group and every group's member ids, with no animation keyframes, transforms or text bodies — cheaper than reading the document and grepping it for an id.",
+    description: "Read an authenticated Creative Studio project, its canonical CreativeDocument, current revision and registered assets. Check the assets before generating anything: people upload their own footage, narration, music and images in the editor. Each asset has an asset_class saying what it is for, and an upload may carry metadata.description with the uploader's instructions - follow them. Narration goes on the timeline as a voiceover clip under the scenes it describes, music as one bed with duckUnderVoice. For a large project, read part of it instead: scene_ids and element_ids narrow the reply to what you are actually editing, and include adds back only the heavier blocks you need. A sliced reply is marked { partial: true } and carries `scenes` rather than `document`, because a document missing most of its scenes would fail its own validator and must never be round-tripped back. Slicing an eighteen-scene film down to the two scenes you are working on is the difference between four iterations and ten for the same effort. Use return: \"summary\" when you only need the shape and the overlap-aware scene timings. Use return: \"outline\" when you need to find an element before you can slice or edit it: every scene's resolved timing, every element's id/type/name/timing/hidden/locked/group and every group's member ids, with no animation keyframes, transforms or text bodies — cheaper than reading the document and grepping it for an id.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -391,7 +392,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_add_asset",
-    description: "Register an existing durable HTTPS image, video or audio URL as an authenticated Creative Studio asset. This does not insert it into a scene until an explicit edit transaction does so.",
+    description: "Register an existing durable HTTPS image, video or audio URL as an authenticated Creative Studio asset. This does not insert it into a scene until an explicit edit transaction does so. Give it an asset_class saying what it is for - it is how the asset is filed in the user's library and how you and later sessions know to put narration under scenes, music under the whole film and a logo in the outro.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -403,6 +404,12 @@ const CREATIVE_MCP_TOOLS = [
         url: { type: "string" },
         mime_type: { type: "string" },
         filename: { type: "string" },
+        asset_class: {
+          type: "string",
+          enum: [...CREATIVE_ASSET_CLASS_IDS],
+          description: `What the asset is for; it must suit the kind. ${CREATIVE_ASSET_CLASS_IDS.map((id) => `${id} (${CREATIVE_ASSET_CLASSES[id].kind}: ${CREATIVE_ASSET_CLASSES[id].hint})`).join("; ")}. Defaults to footage, image or narration by kind.`,
+        },
+        description: { type: "string", description: "A line on what this asset shows or says, kept with it for later sessions." },
       },
       required: ["kind", "url"],
     },
@@ -420,6 +427,12 @@ const CREATIVE_MCP_TOOLS = [
         format: { type: "string", enum: ["landscape", "square", "portrait"], default: "portrait" },
         label: { type: "string" },
         reference_images: { type: "array", maxItems: 12, items: { type: "string" } },
+        asset_class: {
+          type: "string",
+          enum: [...assetClassesForKind("image")],
+          default: "image",
+          description: "What the image is for, which files it in the user's library: image, product, logo, character or background.",
+        },
       },
       required: ["project_id", "prompt"],
     },

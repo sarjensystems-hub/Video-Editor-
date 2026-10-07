@@ -18,6 +18,8 @@ reference tables the earlier ones create.
    `creative-render-snapshots` for the render-cache metadata.
 10. `add_user_api_keys.sql` — each account's own OpenRouter key, encrypted at
    rest. Without this table nobody can save a key, and nothing can generate.
+11. `add_creative_asset_class.sql` — what each asset is for (narration, music,
+   logo, product shot, ...), so the assistant knows how to use an upload.
 
 Every file is safe to re-run: they all use `if not exists`, so a partial run can
 simply be repeated from the top.

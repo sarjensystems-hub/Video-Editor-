@@ -68,6 +68,7 @@ async function handlePOST(request: Request) {
       const asset = await registerRuntimeCreativeAsset(context, {
         projectId,
         kind: "image",
+        assetClass: candidate.role === "product" || candidate.role === "logo" ? candidate.role : "image",
         source: "decomposition",
         url,
         mimeType: "image/png",

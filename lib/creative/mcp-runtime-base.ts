@@ -1226,7 +1226,7 @@ export async function handleCreativeMcpTool(
       let outputAssetId: string | null = null;
       try {
         const registered = await registerRuntimeCreativeAsset(await runtimeContext(context), {
-          projectId: String(data.project_id), kind: "video", source: "render", url: advanced.url,
+          projectId: String(data.project_id), kind: "video", assetClass: "render", source: "render", url: advanced.url,
           mimeType: advanced.contentType, filename: `${metadata.scene_id ? "clip" : "film"}-${jobId}.mp4`,
           width: Number(metadata.output_width) || null, height: Number(metadata.output_height) || null,
           durationMs: Number(metadata.duration_ms) || null, sizeBytes: advanced.sizeBytes,
@@ -1293,6 +1293,7 @@ export async function handleCreativeMcpTool(
         format: normalizeCreativeImageFormat(input.format),
         label: typeof input.label === "string" ? input.label : undefined,
         referenceImages,
+        assetClass: typeof input.asset_class === "string" ? input.asset_class : null,
       }),
     );
     return { project_id: projectId, asset };
@@ -1441,11 +1442,15 @@ export async function handleCreativeMcpTool(
   const asset = await registerRuntimeCreativeAsset(runtime, {
     projectId: typeof input.project_id === "string" ? input.project_id.trim() || null : null,
     kind,
+    assetClass: typeof input.asset_class === "string" ? input.asset_class : null,
     source: typeof input.source === "string" ? input.source : "external",
     url,
     mimeType: typeof input.mime_type === "string" ? input.mime_type : null,
     filename: typeof input.filename === "string" ? input.filename : null,
-    metadata: { added_via: "mcp" },
+    metadata: {
+      added_via: "mcp",
+      ...(typeof input.description === "string" && input.description.trim() ? { description: input.description.trim() } : {}),
+    },
   });
   return { asset };
 }

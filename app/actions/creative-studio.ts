@@ -8,6 +8,7 @@ import { createCanonicalCreativeFixture } from "@/lib/creative/fixtures";
 import type { CreativeDocument } from "@/lib/creative/schema";
 import { validateCreativeDocument } from "@/lib/creative/validate";
 import { createRevisionSnapshot } from "@/lib/creative/persistence";
+import { resolveAssetClass } from "@/lib/creative/asset-class";
 import { deleteCreativeProjectWithFiles } from "@/lib/creative/project-delete";
 
 export type CreativeActionResult<T = undefined> =
@@ -379,10 +380,53 @@ export async function listCreativeAssets(projectId?: string) {
   const { supabase, user } = auth;
   const query = supabase
     .from("creative_assets")
-    .select("id, project_id, kind, source, url, mime_type, filename, width, height, duration_ms, size_bytes, metadata, created_at")
+    .select("id, project_id, kind, asset_class, source, url, mime_type, filename, width, height, duration_ms, size_bytes, metadata, created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
   if (projectId) query.eq("project_id", projectId);
   const { data } = await query;
   return data ?? [];
+}
+
+/**
+ * Re-files an asset under another class, or changes the note left for the
+ * assistant. The class must suit the file: a PNG cannot become music.
+ */
+export async function updateCreativeAssetTags(
+  assetId: string,
+  input: { assetClass?: string; description?: string },
+): Promise<CreativeActionResult<{ assetClass: string; description: string | null }>> {
+  const auth = await authenticatedClient();
+  if (!auth) return { ok: false, error: "Unauthorized" };
+  const { supabase, user } = auth;
+  const { data: asset } = await supabase
+    .from("creative_assets")
+    .select("id, kind, asset_class, metadata")
+    .eq("id", assetId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!asset) return { ok: false, error: "Asset not found" };
+
+  let assetClass = String(asset.asset_class);
+  try {
+    if (input.assetClass !== undefined) assetClass = resolveAssetClass(input.assetClass, String(asset.kind));
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+  const metadata = { ...((asset.metadata ?? {}) as Record<string, unknown>) };
+  if (input.description !== undefined) {
+    const description = input.description.trim().slice(0, 1000);
+    if (description) metadata.description = description;
+    else delete metadata.description;
+  }
+  const { error } = await supabase
+    .from("creative_assets")
+    .update({ asset_class: assetClass, metadata })
+    .eq("id", assetId)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    data: { assetClass, description: typeof metadata.description === "string" ? metadata.description : null },
+  };
 }

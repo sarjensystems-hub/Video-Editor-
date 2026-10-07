@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Panel } from "@/components/ui/Panel";
 import type { CreativeDocument } from "@/lib/creative/schema";
 import type { EditorAsset } from "./CreativeLayersPanel";
+import { toEditorAsset } from "@/lib/creative/editor-asset";
 
 type DecompositionOutput = {
   asset: {
@@ -21,16 +22,6 @@ type DecompositionOutput = {
   confidence: number;
   box: { x: number; y: number; width: number; height: number };
 };
-
-function toEditorAsset(asset: Record<string, unknown>): EditorAsset {
-  return {
-    id: String(asset.id),
-    kind: String(asset.kind),
-    url: String(asset.url),
-    filename: asset.filename == null ? null : String(asset.filename),
-    mimeType: asset.mime_type == null ? null : String(asset.mime_type),
-  };
-}
 
 export default function CreativeAutomationPanel({
   projectId,

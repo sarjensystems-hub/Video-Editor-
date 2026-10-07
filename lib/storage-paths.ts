@@ -29,6 +29,18 @@ export function userStoragePath(userId: string, kind: StorageKind, name: string)
   return `${userId}/${kind}/${clean}`;
 }
 
+/**
+ * Whether `path` is a file inside this user's `kind` folder. A browser upload
+ * reports back the path it wrote to; this is how the server checks the path
+ * is one it could have issued, before recording it as the user's asset.
+ */
+export function isUserStoragePath(userId: string, kind: StorageKind, path: unknown): path is string {
+  if (typeof path !== "string" || !userId) return false;
+  const prefix = `${userId}/${kind}/`;
+  if (!path.startsWith(prefix) || path.length === prefix.length) return false;
+  return !path.slice(prefix.length).split("/").some((segment) => segment === ".." || segment === "");
+}
+
 const PUBLIC_MARKER = "/storage/v1/object/public/";
 
 /**

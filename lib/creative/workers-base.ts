@@ -1,6 +1,7 @@
 import { generateSocialImage } from "../image-gen";
 import { audioExtensionFor, containerFromFormat } from "./audio-format";
 import { userStoragePath } from "@/lib/storage-paths";
+import { resolveAssetClass } from "./asset-class";
 import {
   getRuntimeCreativeProject,
   registerRuntimeCreativeAsset,
@@ -36,12 +37,15 @@ export async function generateCreativeImageAsset(
     format?: CreativeImageFormat;
     label?: string;
     referenceImages?: string[];
+    /** logo, product, character, background or image; checked before anything is spent. */
+    assetClass?: string | null;
   },
 ) {
   const project = await getRuntimeCreativeProject(context, input.projectId);
   if (!project) throw new Error("Project not found");
   const prompt = input.prompt.trim();
   if (!prompt) throw new Error("prompt is required");
+  const assetClass = resolveAssetClass(input.assetClass, "image");
   const format = normalizeCreativeImageFormat(input.format);
   const generated = await generateSocialImage(prompt, format, input.referenceImages ?? []);
   if (!generated) throw new Error("Image generation returned no image");
@@ -53,6 +57,7 @@ export async function generateCreativeImageAsset(
   return registerRuntimeCreativeAsset(context, {
     projectId: input.projectId,
     kind: "image",
+    assetClass,
     source: "studio-generation",
     url,
     mimeType: "image/png",
@@ -84,6 +89,7 @@ export async function promoteCreativeVideoAsset(
   return registerRuntimeCreativeAsset(context, {
     projectId: input.projectId,
     kind: "video",
+    assetClass: "footage",
     source: "seedance/openrouter",
     url: String(data.video_url),
     mimeType: "video/mp4",
@@ -137,6 +143,7 @@ export async function generateCreativeSpeechAsset(
   return registerRuntimeCreativeAsset(context, {
     projectId: input.projectId,
     kind: "audio",
+    assetClass: "narration",
     source: `${DEFAULT_SPEECH_MODEL.split("/").pop()}/openrouter`,
     url,
     mimeType: generated.contentType,
@@ -168,7 +175,7 @@ export async function addCreativeSfxAsset(
   const url = await uploadAnyBytes(generated.bytes, storagePath, generated.contentType);
   if (!url) throw new Error("Built-in sound effect could not be persisted");
   return registerRuntimeCreativeAsset(context, {
-    projectId: input.projectId, kind: "audio", source: "studio-builtin-sfx", url,
+    projectId: input.projectId, kind: "audio", assetClass: "sfx", source: "studio-builtin-sfx", url,
     mimeType: generated.contentType, filename: normalizeGeneratedAssetFilename(input.label?.trim() || generated.effect.label, "wav"),
     sizeBytes: generated.bytes.byteLength, durationMs: generated.durationMs, storagePath,
     metadata: { worker: "builtin-sfx", effect_id: input.effectId, deterministic: true },
@@ -203,6 +210,7 @@ export async function generateCreativeMusicAsset(
   return registerRuntimeCreativeAsset(context, {
     projectId: input.projectId,
     kind: "audio",
+    assetClass: "music",
     source: "lyria/openrouter",
     url,
     mimeType: generated.contentType,
