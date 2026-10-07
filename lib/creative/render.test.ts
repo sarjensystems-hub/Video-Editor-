@@ -28,6 +28,21 @@ function pngBytes(marker: number) {
   return new Uint8Array([0x89, 0x50, 0x4e, 0x47, marker]);
 }
 
+/** What the mocked sharp pipeline "encodes" to: a WebP header and a marker. */
+const WEBP_BYTES = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x57, 0x45, 0x42, 0x50]);
+
+function sharpPipeline() {
+  const pipeline = {
+    resize: vi.fn(),
+    composite: vi.fn(),
+    png: vi.fn(),
+    webp: vi.fn(),
+    toBuffer: vi.fn(async () => WEBP_BYTES),
+  };
+  for (const step of ["resize", "composite", "png", "webp"] as const) pipeline[step].mockReturnValue(pipeline);
+  return pipeline;
+}
+
 async function importAdapter() {
   const module = await import("./render");
   return new module.RemotionVercelCreativeRenderAdapter();
@@ -63,6 +78,7 @@ describe("creative still-frame render boundary", () => {
       contentType: "image/png",
     }));
     uploadAnyBytes.mockImplementation(async (_bytes: Uint8Array, key: string) => `https://cdn.example.com/${key}`);
+    sharpFactory.mockImplementation(() => sharpPipeline());
   });
 
   afterEach(() => {
@@ -74,12 +90,7 @@ describe("creative still-frame render boundary", () => {
     const document = createCanonicalCreativeFixture();
     const assets = { "fixture-background": { url: "https://cdn.example.com/bg.png", mimeType: "image/png" } };
 
-    const result = await adapter.renderFrame({
-      document,
-      assets,
-      timeMs: 1500,
-      outputKey: "creative-previews/user-1/project-1/rev-1-45.png",
-    });
+    const result = await adapter.renderFrame({ document, assets, timeMs: 1500 });
 
     expect(renderStillOnVercel).toHaveBeenCalledTimes(1);
     const call = renderStillOnVercel.mock.calls[0][0];
@@ -89,18 +100,15 @@ describe("creative still-frame render boundary", () => {
     expect(call.imageFormat).toBe("png");
 
     expect(result).toEqual({
-      url: "https://cdn.example.com/creative-previews/user-1/project-1/rev-1-45.png",
-      contentType: "image/png",
-      sizeBytes: 5,
+      bytes: new Uint8Array(WEBP_BYTES),
+      contentType: "image/webp",
+      sizeBytes: WEBP_BYTES.byteLength,
+      // The lossless render is kept for pixel measurement, untouched.
+      png: pngBytes(1),
       renderer: "remotion-vercel",
       frame: 45,
       timeMs: 1500,
     });
-    expect(uploadAnyBytes).toHaveBeenCalledWith(
-      expect.any(Uint8Array),
-      "creative-previews/user-1/project-1/rev-1-45.png",
-      "image/png",
-    );
     expect(sandboxStop).toHaveBeenCalledTimes(1);
   });
 
@@ -223,12 +231,38 @@ describe("creative still-frame render boundary", () => {
     expect(sandboxStop).toHaveBeenCalledTimes(1);
   });
 
-  it("fails when a rendered frame cannot be persisted to permanent storage", async () => {
-    uploadAnyBytes.mockResolvedValue(null);
+  /**
+   * Previews are looked at once. Storing them left a multi-megabyte PNG in the
+   * bucket for every frame an assistant ever inspected.
+   */
+  it("never writes a preview frame or contact sheet to storage", async () => {
     const adapter = await importAdapter();
-    await expect(
-      adapter.renderFrame({ document: createCanonicalCreativeFixture(), assets: {}, timeMs: 0 }),
-    ).rejects.toThrow(/could not be persisted/i);
+    await adapter.renderFrames({
+      document: createCanonicalCreativeFixture(),
+      assets: {},
+      timesMs: [0, 2000],
+      contactSheet: true,
+    });
+    expect(uploadAnyBytes).not.toHaveBeenCalled();
+  });
+
+  it("sends previews as WebP no larger than the model can use", async () => {
+    const pipelines: ReturnType<typeof sharpPipeline>[] = [];
+    sharpFactory.mockImplementation(() => {
+      const pipeline = sharpPipeline();
+      pipelines.push(pipeline);
+      return pipeline;
+    });
+    const { PREVIEW_MAX_EDGE } = await import("./render");
+    const adapter = await importAdapter();
+    await adapter.renderFrame({ document: createCanonicalCreativeFixture(), assets: {}, timeMs: 0 });
+
+    const encoder = pipelines.find((pipeline) => pipeline.webp.mock.calls.length > 0);
+    expect(encoder?.webp).toHaveBeenCalledWith(expect.objectContaining({ quality: expect.any(Number) }));
+    expect(encoder?.resize).toHaveBeenCalledWith(PREVIEW_MAX_EDGE, PREVIEW_MAX_EDGE, {
+      fit: "inside",
+      withoutEnlargement: true,
+    });
   });
 
   it("renders a multi-frame batch from one restored sandbox", async () => {
@@ -237,18 +271,13 @@ describe("creative still-frame render boundary", () => {
       document: createCanonicalCreativeFixture(),
       assets: {},
       timesMs: [0, 2000, 4000],
-      outputKeys: ["a.png", "b.png", "c.png"],
     });
 
     expect(sandboxCreate).toHaveBeenCalledTimes(1);
     expect(renderStillOnVercel).toHaveBeenCalledTimes(3);
     expect(result.frames.map((frame) => frame.frame)).toEqual([0, 60, 120]);
     expect(result.frames.map((frame) => frame.timeMs)).toEqual([0, 2000, 4000]);
-    expect(result.frames.map((frame) => frame.url)).toEqual([
-      "https://cdn.example.com/a.png",
-      "https://cdn.example.com/b.png",
-      "https://cdn.example.com/c.png",
-    ]);
+    expect(result.frames.every((frame) => frame.contentType === "image/webp")).toBe(true);
     expect(result.contactSheet).toBeUndefined();
     expect(sandboxStop).toHaveBeenCalledTimes(1);
     expect(
@@ -256,25 +285,23 @@ describe("creative still-frame render boundary", () => {
     ).toEqual(["/tmp/creative-frame-0.png", "/tmp/creative-frame-1.png", "/tmp/creative-frame-2.png"]);
   });
 
-  it("composites a deterministic contact sheet when a sheet key is requested", async () => {
-    const resize = vi.fn().mockReturnThis();
-    const composite = vi.fn().mockReturnThis();
-    const png = vi.fn().mockReturnThis();
-    const toBuffer = vi.fn().mockResolvedValue(Buffer.from([1, 2, 3, 4, 5, 6]));
-    sharpFactory.mockImplementation(() => ({ resize, composite, png, toBuffer }));
+  it("composites a deterministic contact sheet when one is requested", async () => {
+    const pipeline = sharpPipeline();
+    sharpFactory.mockImplementation(() => pipeline);
+    const { resize, composite } = pipeline;
 
     const adapter = await importAdapter();
     const result = await adapter.renderFrames({
       document: createCanonicalCreativeFixture(),
       assets: {},
       timesMs: [0, 4000],
-      contactSheetKey: "creative-previews/user-1/project-1/rev-1-sheet.png",
+      contactSheet: true,
     });
 
     expect(result.contactSheet).toEqual({
-      url: "https://cdn.example.com/creative-previews/user-1/project-1/rev-1-sheet.png",
-      contentType: "image/png",
-      sizeBytes: 6,
+      bytes: new Uint8Array(WEBP_BYTES),
+      contentType: "image/webp",
+      sizeBytes: WEBP_BYTES.byteLength,
       columns: 2,
       rows: 1,
       width: 1920,

@@ -51,13 +51,26 @@ export interface CreativeFrameRenderRequest {
   document: CreativeDocument;
   assets: CreativeRemotionAssetMap;
   timeMs: number;
-  outputKey?: string;
 }
 
+/**
+ * A rendered still, held in memory and never written to storage.
+ *
+ * Previews are looked at once and thrown away, so storing them only left a
+ * multi-megabyte PNG behind for every frame an assistant ever inspected. Now
+ * the frame travels to the assistant inside the tool response and nowhere
+ * else.
+ */
 export interface CreativeFrameRenderResult {
-  url: string;
-  contentType: string;
+  /** The preview to show: WebP, longest edge capped at PREVIEW_MAX_EDGE. */
+  bytes: Uint8Array;
+  contentType: "image/webp";
   sizeBytes: number;
+  /**
+   * The renderer's lossless full-resolution PNG, for the callers that measure
+   * pixels (frame comparison, reference analysis). Never sent anywhere.
+   */
+  png: Uint8Array;
   renderer: "remotion-vercel";
   frame: number;
   timeMs: number;
@@ -68,15 +81,13 @@ export interface CreativeFramesRenderRequest {
   assets: CreativeRemotionAssetMap;
   /** Exact millisecond offsets to capture, in the order the caller asked for them. */
   timesMs: number[];
-  /** Optional R2 key per frame, index-aligned with `timesMs`. */
-  outputKeys?: string[];
-  /** When set, the frames are also composited into one deterministic sheet at this key. */
-  contactSheetKey?: string;
+  /** Also composite the frames into one deterministic sheet. */
+  contactSheet?: boolean;
 }
 
 export interface CreativeContactSheetResult {
-  url: string;
-  contentType: string;
+  bytes: Uint8Array;
+  contentType: "image/webp";
   sizeBytes: number;
   columns: number;
   rows: number;
@@ -218,12 +229,37 @@ function toBuffer(bytes: Uint8Array | ArrayBuffer): Uint8Array {
   return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
 }
 
+/**
+ * Longest edge a preview is sent at. Claude scales any image larger than this
+ * down before reading it, so sending more pixels only costs bytes and upload
+ * time, never detail the model can see.
+ */
+export const PREVIEW_MAX_EDGE = 1568;
+export const PREVIEW_WEBP_QUALITY = 80;
+
+/** One import of sharp shared by every frame in a batch, however many run at once. */
+type Sharp = typeof import("sharp");
+let sharpLoader: Promise<Sharp> | null = null;
+function loadSharp(): Promise<Sharp> {
+  sharpLoader ??= import("sharp").then((module) => module.default);
+  return sharpLoader;
+}
+
+/** Re-encodes a lossless PNG as a small WebP for an assistant to look at. */
+export async function encodePreviewWebp(png: Uint8Array): Promise<Uint8Array> {
+  const sharp = await loadSharp();
+  const webp = await sharp(Buffer.from(png))
+    .resize(PREVIEW_MAX_EDGE, PREVIEW_MAX_EDGE, { fit: "inside", withoutEnlargement: true })
+    .webp({ quality: PREVIEW_WEBP_QUALITY })
+    .toBuffer();
+  return new Uint8Array(webp);
+}
+
 async function compositeContactSheet(
   frames: Uint8Array[],
   layout: ContactSheetLayout,
 ): Promise<Uint8Array> {
-  const sharpModule = await import("sharp");
-  const sharp = sharpModule.default;
+  const sharp = await loadSharp();
   const tiles = await Promise.all(
     layout.tiles.map(async (tile, index) => ({
       input: await sharp(Buffer.from(frames[index]))
@@ -428,7 +464,6 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
       document: request.document,
       assets: request.assets,
       timesMs: [request.timeMs],
-      outputKeys: request.outputKey ? [request.outputKey] : undefined,
     });
     return result.frames[0];
   }
@@ -475,47 +510,40 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
           });
 
           const bytes = await sandbox.fs.readFile(output.sandboxFilePath);
-          const buffer = toBuffer(bytes as Uint8Array | ArrayBuffer);
-          if (buffer.byteLength <= 0) throw new Error("Renderer produced an empty frame");
+          const png = toBuffer(bytes as Uint8Array | ArrayBuffer);
+          if (png.byteLength <= 0) throw new Error("Renderer produced an empty frame");
 
-          const key = request.outputKeys?.[index] ?? `creative-frames/${crypto.randomUUID()}.png`;
-          const url = await uploadAnyBytes(buffer, key, output.contentType || "image/png");
-          if (!url) throw new Error("Rendered frame could not be persisted");
-
+          const preview = await encodePreviewWebp(png);
           return {
-            raw: buffer,
-            frame: {
-              url,
-              contentType: output.contentType || "image/png",
-              sizeBytes: buffer.byteLength,
-              renderer: "remotion-vercel" as const,
-              frame,
-              timeMs,
-            },
+            bytes: preview,
+            contentType: "image/webp" as const,
+            sizeBytes: preview.byteLength,
+            png,
+            renderer: "remotion-vercel" as const,
+            frame,
+            timeMs,
           };
         },
       );
 
-      const frames = rendered.map((entry) => entry.frame);
-      const rawFrames = rendered.map((entry) => entry.raw);
-
-      if (!request.contactSheetKey) return { frames };
+      const frames = rendered;
+      if (!request.contactSheet) return { frames };
 
       const layout = planContactSheetLayout({
-        frameCount: rawFrames.length,
+        frameCount: frames.length,
         frameWidth: request.document.canvas.width,
         frameHeight: request.document.canvas.height,
       });
-      const sheetBytes = await compositeContactSheet(rawFrames, layout);
-      const sheetUrl = await uploadAnyBytes(sheetBytes, request.contactSheetKey, "image/png");
-      if (!sheetUrl) throw new Error("Contact sheet could not be persisted");
+      const sheet = await encodePreviewWebp(
+        await compositeContactSheet(frames.map((entry) => entry.png), layout),
+      );
 
       return {
         frames,
         contactSheet: {
-          url: sheetUrl,
-          contentType: "image/png",
-          sizeBytes: sheetBytes.byteLength,
+          bytes: sheet,
+          contentType: "image/webp",
+          sizeBytes: sheet.byteLength,
           columns: layout.columns,
           rows: layout.rows,
           width: layout.sheetWidth,

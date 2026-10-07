@@ -30,6 +30,7 @@ import {
 import { validateCreativeDocument } from "./validate";
 import { describeCreativeSchema, MAX_TRANSACTION_OPERATIONS, type CreativeSchemaGuideSection } from "./schema-guide";
 import { creativeCapabilityDigest } from "./capability-map";
+import { withInlineImages, type InlineImage } from "../mcp-server/inline-images";
 
 /**
  * The ChatGPT-facing Creative Studio surface.
@@ -353,9 +354,31 @@ async function resolveOwnedAssetMap(
   };
 }
 
-/** Permanent, revision-scoped R2 key so a preview URL keeps resolving. */
-function creativePreviewKey(userId: string, projectId: string, revisionId: string, suffix: string): string {
-  return `creative-previews/${userId}/${projectId}/${revisionId}/${suffix}`;
+/* ── Preview images ──────────────────────────────────────────────────────────
+   Previews are rendered in memory and handed to the assistant inline; nothing
+   here is written to storage. See lib/mcp-server/inline-images.ts. */
+
+type RenderedFrames = import("./render").CreativeFramesRenderResult;
+type RenderedFrame = RenderedFrames["frames"][number];
+
+function previewImage(frame: RenderedFrame, role: "frame"): InlineImage {
+  return { bytes: frame.bytes, mimeType: frame.contentType, role };
+}
+
+function sheetImage(result: RenderedFrames): InlineImage[] {
+  return result.contactSheet
+    ? [{ bytes: result.contactSheet.bytes, mimeType: result.contactSheet.contentType, role: "sheet" }]
+    : [];
+}
+
+/** The sheet first, then each frame — the MCP layer keeps what was asked for. */
+function previewImages(result: RenderedFrames): InlineImage[] {
+  return [...sheetImage(result), ...result.frames.map((frame) => previewImage(frame, "frame"))];
+}
+
+/** What a response says about a frame: never its bytes, never a URL. */
+function frameSummary(frame: RenderedFrame) {
+  return { time_ms: frame.timeMs, frame: frame.frame, content_type: frame.contentType, size_bytes: frame.sizeBytes };
 }
 
 async function renderProject(context: McpUserContext, request: CreativeProjectRenderInput) {
@@ -481,10 +504,6 @@ async function renderDocumentFrames(
   timesMs: number[],
   withContactSheet: boolean,
 ) {
-  // The storage key needs some path segment; the reported revision stays
-  // exactly what the project has, so a caller is never told a revision ID
-  // that does not exist.
-  const revisionKey = revisionId ?? "unversioned";
   const { assets } = await resolveOwnedAssetMap(context, document);
 
   // Frames resolve before any renderer work so an out-of-range timestamp is
@@ -504,10 +523,7 @@ async function renderDocumentFrames(
         document,
         assets,
         timesMs,
-        outputKeys: resolved.map((entry) => creativePreviewKey(context.user.id, projectId, revisionKey, `frame-${entry.frame}.png`)),
-        contactSheetKey: withContactSheet
-          ? creativePreviewKey(context.user.id, projectId, revisionKey, `sheet-${resolved.map((entry) => entry.frame).join("-")}.png`)
-          : undefined,
+        contactSheet: withContactSheet,
       }),
   );
 
@@ -594,15 +610,17 @@ export async function handleCreativeMcpTool(
     const { projectId, timeMs } = parseCreativeFrameRequestInput(input);
     const { revisionId, result } = await renderProjectFrames(context, projectId, [timeMs], false);
     const frame = result.frames[0];
-    return {
-      project_id: projectId,
-      revision_id: revisionId,
-      time_ms: frame.timeMs,
-      frame: frame.frame,
-      output_url: frame.url,
-      content_type: frame.contentType,
-      size_bytes: frame.sizeBytes,
-    };
+    return withInlineImages(
+      {
+        project_id: projectId,
+        revision_id: revisionId,
+        time_ms: frame.timeMs,
+        frame: frame.frame,
+        content_type: frame.contentType,
+        size_bytes: frame.sizeBytes,
+      },
+      [previewImage(frame, "frame")],
+    );
   }
 
   if (name === "studio_compare_frame") {
@@ -610,36 +628,34 @@ export async function handleCreativeMcpTool(
     const previewBytes = parsePreviewImageBase64(input.preview_image_base64);
     const { revisionId, result } = await renderProjectFrames(context, projectId, [timeMs], false);
     const frame = result.frames[0];
-    const response = await fetch(frame.url, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Could not load rendered frame (${response.status})`);
     const { compareCreativeFrameImages } = await import("./frame-comparison");
-    const comparison = await compareCreativeFrameImages(previewBytes, new Uint8Array(await response.arrayBuffer()));
-    const { uploadAnyBytes } = await import("../storage");
-    const differenceUrl = await uploadAnyBytes(comparison.diffPng, creativePreviewKey(context.user.id, projectId, revisionId ?? "unversioned", `parity-diff-${frame.frame}.png`), "image/png");
-    if (!differenceUrl) throw new Error("Frame difference image could not be persisted");
-    return { project_id: projectId, revision_id: revisionId, time_ms: frame.timeMs, frame: frame.frame, rendered_frame_url: frame.url, difference_url: differenceUrl, content_type: "image/png", ...comparison.metrics };
+    // Compared against the lossless PNG, never the WebP preview: compression
+    // artefacts would read as differences that are not in the render.
+    const comparison = await compareCreativeFrameImages(previewBytes, frame.png);
+    const { encodePreviewWebp } = await import("./render");
+    const difference = await encodePreviewWebp(comparison.diffPng);
+    return withInlineImages(
+      { project_id: projectId, revision_id: revisionId, time_ms: frame.timeMs, frame: frame.frame, content_type: "image/webp", ...comparison.metrics },
+      [{ bytes: difference, mimeType: "image/webp", role: "difference" }],
+    );
   }
 
   if (name === "studio_render_creative_contact_sheet") {
     const { projectId, timesMs } = parseCreativeContactSheetInput(input);
     const { revisionId, result, renderedDurationMs } = await renderProjectFrames(context, projectId, timesMs, true);
-    return {
-      project_id: projectId,
-      revision_id: revisionId,
-      rendered_duration_ms: renderedDurationMs,
-      contact_sheet_url: result.contactSheet?.url ?? null,
-      contact_sheet_columns: result.contactSheet?.columns ?? null,
-      contact_sheet_rows: result.contactSheet?.rows ?? null,
-      content_type: result.contactSheet?.contentType ?? "image/png",
-      size_bytes: result.contactSheet?.sizeBytes ?? null,
-      frames: result.frames.map((frame) => ({
-        time_ms: frame.timeMs,
-        frame: frame.frame,
-        output_url: frame.url,
-        content_type: frame.contentType,
-        size_bytes: frame.sizeBytes,
-      })),
-    };
+    return withInlineImages(
+      {
+        project_id: projectId,
+        revision_id: revisionId,
+        rendered_duration_ms: renderedDurationMs,
+        contact_sheet_columns: result.contactSheet?.columns ?? null,
+        contact_sheet_rows: result.contactSheet?.rows ?? null,
+        content_type: result.contactSheet?.contentType ?? "image/webp",
+        size_bytes: result.contactSheet?.sizeBytes ?? null,
+        frames: result.frames.map(frameSummary),
+      },
+      previewImages(result),
+    );
   }
 
   if (name === "studio_inspect_video_asset") {
@@ -669,7 +685,6 @@ export async function handleCreativeMcpTool(
     const resolved = timesMs.map((timeMs) => resolveCreativeFrameAtTime(document, timeMs));
 
     const { creativeRenderAdapter } = await import("./render");
-    const probeKey = (suffix: string) => `creative-previews/${context.user.id}/asset-probes/${asset.id}/${suffix}`;
     const result = await withCredits(
       context,
       "creative_frame",
@@ -679,32 +694,26 @@ export async function handleCreativeMcpTool(
           document,
           assets: getCreativeInputAssetMap([{ id: asset.id, url: asset.url, mimeType: asset.mime_type }]),
           timesMs,
-          outputKeys: resolved.map((entry) => probeKey(`frame-${entry.frame}.png`)),
-          contactSheetKey: probeKey(`sheet-${resolved.map((entry) => entry.frame).join("-")}.png`),
+          contactSheet: true,
         }),
     );
 
-    return {
-      asset_id: asset.id,
-      duration_ms: asset.duration_ms,
-      width: asset.width,
-      height: asset.height,
-      contact_sheet_url: result.contactSheet?.url ?? null,
-      contact_sheet_columns: result.contactSheet?.columns ?? null,
-      contact_sheet_rows: result.contactSheet?.rows ?? null,
-      content_type: result.contactSheet?.contentType ?? "image/png",
-      size_bytes: result.contactSheet?.sizeBytes ?? null,
-      frames: result.frames.map((frame) => ({
-        // For a probe the timeline time is the source time, so this column is
+    return withInlineImages(
+      {
+        asset_id: asset.id,
+        duration_ms: asset.duration_ms,
+        width: asset.width,
+        height: asset.height,
+        contact_sheet_columns: result.contactSheet?.columns ?? null,
+        contact_sheet_rows: result.contactSheet?.rows ?? null,
+        content_type: result.contactSheet?.contentType ?? "image/webp",
+        size_bytes: result.contactSheet?.sizeBytes ?? null,
+        // For a probe the timeline time is the source time, so source_ms is
         // directly the number to put in sourceStartMs.
-        time_ms: frame.timeMs,
-        source_ms: frame.timeMs,
-        frame: frame.frame,
-        output_url: frame.url,
-        content_type: frame.contentType,
-        size_bytes: frame.sizeBytes,
-      })),
-    };
+        frames: result.frames.map((frame) => ({ ...frameSummary(frame), source_ms: frame.timeMs })),
+      },
+      previewImages(result),
+    );
   }
 
   if (name === "studio_analyze_audio_asset") {
@@ -789,33 +798,31 @@ export async function handleCreativeMcpTool(
     const { resolveCreativeFrameAtTime } = await import("./frame-time");
     const resolved = timesMs.map((timeMs) => resolveCreativeFrameAtTime(document, timeMs));
     const { creativeRenderAdapter } = await import("./render");
-    const probeKey = (suffix: string) => `creative-previews/${context.user.id}/reference-analysis/${asset.id}/${suffix}`;
     const rendered = await withCredits(context, "creative_frame", creativeFrameCost(resolved.length), () =>
       creativeRenderAdapter.renderFrames({
         document,
         assets: getCreativeInputAssetMap([{ id: asset.id, url: asset.url, mimeType: asset.mime_type }]),
         timesMs,
-        outputKeys: resolved.map((entry) => probeKey(`frame-${entry.frame}.png`)),
-        contactSheetKey: probeKey(`sheet-${resolved.map((entry) => entry.frame).join("-")}.png`),
+        contactSheet: true,
       }),
     );
     const { measureReferenceFrame, analyzeReferenceFrameSeries } = await import("./reference-analysis");
-    const measurements = await Promise.all(rendered.frames.map(async (frame) => {
-      const response = await fetch(frame.url, { cache: "no-store" });
-      if (!response.ok) throw new Error(`Could not read rendered reference frame (${response.status})`);
-      return measureReferenceFrame(Buffer.from(await response.arrayBuffer()), frame.timeMs);
-    }));
+    const measurements = await Promise.all(
+      rendered.frames.map((frame) => measureReferenceFrame(Buffer.from(frame.png), frame.timeMs)),
+    );
     const analysis = analyzeReferenceFrameSeries(measurements, durationMs);
     const storedAnalysis = { ...analysis, sample_interval_ms: actualInterval, sampled_frame_count: measurements.length };
     await context.supabase.from("creative_assets").update({
       metadata: { ...((asset.metadata as Record<string, unknown>) ?? {}), reference_analysis: storedAnalysis },
     }).eq("id", assetId).eq("user_id", context.user.id);
-    return {
-      asset_id: assetId,
-      contact_sheet_url: rendered.contactSheet?.url ?? null,
-      sampled_frames: rendered.frames.map((frame) => ({ time_ms: frame.timeMs, output_url: frame.url })),
-      ...storedAnalysis,
-    };
+    return withInlineImages(
+      {
+        asset_id: assetId,
+        sampled_frames: rendered.frames.map((frame) => ({ time_ms: frame.timeMs, frame: frame.frame })),
+        ...storedAnalysis,
+      },
+      sheetImage(rendered),
+    );
   }
 
   if (name === "studio_build_reference_skeleton") {
@@ -850,24 +857,32 @@ export async function handleCreativeMcpTool(
     const rightRevisionId = typeof input.right_revision_id === "string" && input.right_revision_id.trim() ? input.right_revision_id.trim() : current.currentRevisionId;
     if (!rightRevisionId) throw new Error("Current project has no revision to compare");
     const right = await loadRevision(rightRevisionId);
-    const leftResolved = timesMs.map((timeMs) => resolveCreativeFrameAtTime(left.document, timeMs));
-    const rightResolved = timesMs.map((timeMs) => resolveCreativeFrameAtTime(right.document, timeMs));
+    // Resolved up front so an out-of-range time fails before any sandbox restore.
+    for (const timeMs of timesMs) {
+      resolveCreativeFrameAtTime(left.document, timeMs);
+      resolveCreativeFrameAtTime(right.document, timeMs);
+    }
     const [leftAssets, rightAssets] = await Promise.all([resolveOwnedAssetMap(context, left.document), resolveOwnedAssetMap(context, right.document)]);
     const { creativeRenderAdapter } = await import("./render");
     const [leftRender, rightRender] = await withCredits(context, "creative_frame", creativeFrameCost(timesMs.length * 2), () => Promise.all([
-      creativeRenderAdapter.renderFrames({ document: left.document, assets: leftAssets.assets, timesMs, outputKeys: leftResolved.map((entry) => creativePreviewKey(context.user.id, projectId, left.id, `compare-${entry.frame}.png`)), contactSheetKey: creativePreviewKey(context.user.id, projectId, left.id, `compare-sheet-${leftResolved.map((entry) => entry.frame).join("-")}.png`) }),
-      creativeRenderAdapter.renderFrames({ document: right.document, assets: rightAssets.assets, timesMs, outputKeys: rightResolved.map((entry) => creativePreviewKey(context.user.id, projectId, right.id, `compare-${entry.frame}.png`)), contactSheetKey: creativePreviewKey(context.user.id, projectId, right.id, `compare-sheet-${rightResolved.map((entry) => entry.frame).join("-")}.png`) }),
+      creativeRenderAdapter.renderFrames({ document: left.document, assets: leftAssets.assets, timesMs, contactSheet: true }),
+      creativeRenderAdapter.renderFrames({ document: right.document, assets: rightAssets.assets, timesMs, contactSheet: true }),
     ]));
     const { diffCreativeDocuments } = await import("./document-diff");
     const { scoreCreativeStructureSimilarity } = await import("./structure-profile");
-    return {
-      project_id: projectId,
-      times_ms: timesMs,
-      left: { revision_id: left.id, revision: left.sequence, contact_sheet_url: leftRender.contactSheet?.url ?? null, frames: leftRender.frames },
-      right: { revision_id: right.id, revision: right.sequence, contact_sheet_url: rightRender.contactSheet?.url ?? null, frames: rightRender.frames },
-      changes: diffCreativeDocuments(left.document, right.document),
-      structural_similarity: scoreCreativeStructureSimilarity(left.document, right.document),
-    };
+    // Two sheets, left then right, in the order the response names them.
+    return withInlineImages(
+      {
+        project_id: projectId,
+        times_ms: timesMs,
+        images: "Two contact sheets follow: left revision first, then right.",
+        left: { revision_id: left.id, revision: left.sequence, frames: leftRender.frames.map(frameSummary) },
+        right: { revision_id: right.id, revision: right.sequence, frames: rightRender.frames.map(frameSummary) },
+        changes: diffCreativeDocuments(left.document, right.document),
+        structural_similarity: scoreCreativeStructureSimilarity(left.document, right.document),
+      },
+      [...sheetImage(leftRender), ...sheetImage(rightRender)],
+    );
   }
 
   if (name === "studio_inspect_creative_layout") {
@@ -1107,20 +1122,22 @@ export async function handleCreativeMcpTool(
         thumbnailError = error instanceof Error ? error.message : String(error);
       }
     }
-    return {
-      project_id: projectId,
-      revision_id: result.revisionId,
-      revision: result.sequence,
-      applied: transaction.operations.length,
-      ...(thumbnails ? { thumbnails: {
-        revision_id: thumbnails.revisionId,
-        contact_sheet_url: thumbnails.result.contactSheet?.url ?? null,
-        content_type: thumbnails.result.contactSheet?.contentType ?? "image/png",
-        frames: thumbnails.result.frames.map((frame) => ({ time_ms: frame.timeMs, frame: frame.frame, output_url: frame.url, content_type: frame.contentType, size_bytes: frame.sizeBytes })),
-      } } : {}),
-      ...(thumbnailError ? { thumbnail_error: thumbnailError } : {}),
-      ...payload,
-    };
+    return withInlineImages(
+      {
+        project_id: projectId,
+        revision_id: result.revisionId,
+        revision: result.sequence,
+        applied: transaction.operations.length,
+        ...(thumbnails ? { thumbnails: {
+          revision_id: thumbnails.revisionId,
+          content_type: thumbnails.result.contactSheet?.contentType ?? "image/webp",
+          frames: thumbnails.result.frames.map(frameSummary),
+        } } : {}),
+        ...(thumbnailError ? { thumbnail_error: thumbnailError } : {}),
+        ...payload,
+      },
+      thumbnails ? sheetImage(thumbnails.result) : [],
+    );
   }
 
   if (name === "studio_render_creative_project") {

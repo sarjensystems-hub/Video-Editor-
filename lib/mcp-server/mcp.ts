@@ -5,6 +5,7 @@ import { documentSha256 } from "../creative/document-hash";
 import { creativeRenderCost, videoGenerationCost } from "../credit-costs";
 import { GEMINI_TTS_VOICES, GEMINI_TTS_VOICE_STYLES } from "../creative/audio-workers";
 import { MAX_TRANSACTION_OPERATIONS } from "../creative/schema-guide";
+import { inlineImagesOf } from "./inline-images";
 
 /**
  * Rates quoted to callers, computed from the cost table rather than written
@@ -16,9 +17,8 @@ const VIDEO_CREDITS_PER_SECOND = {
   "720p": videoGenerationCost(1, "720p"),
 } as const;
 const RENDER_CREDITS_PER_SECOND = creativeRenderCost(1000);
-const MAX_INLINE_PREVIEW_IMAGE_BYTES = 8 * 1024 * 1024;
+/** Ceiling on the images in one response. WebP previews are ~100-300 KB each. */
 const MAX_INLINE_PREVIEW_TOTAL_BYTES = 24 * 1024 * 1024;
-const PREVIEW_IMAGE_FETCH_TIMEOUT_MS = 10_000;
 
 const MODERN_PROTOCOL = "2026-07-28";
 const LEGACY_PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"] as const;
@@ -28,7 +28,7 @@ const SERVER_INFO = {
   version: `2.4.0+creative.${CREATIVE_EDIT_CONTRACT_SHA256.slice(0, 12)}`,
 };
 const INSTRUCTIONS =
-  "Studio is deterministic creative execution for your own creative work. You own concept, copy, art direction, image generation and HTML/UI design; Studio owns persistent projects, layers, assets, timeline, validation, revisions, preview, rendering and export. Create a Creative Studio project, or submit a complete CreativeDocument you authored and have it validated and persisted as revision 1. Edit it through atomic, validated transactions where the whole transaction applies or fails without partial mutation, and every accepted transaction creates one recoverable revision. Inspect your work visually: render an exact still frame, or a multi-timestamp contact sheet, from the current revision using the same composition as the final render, then critique the returned image and edit again. No Studio tool reinterprets, redesigns or rewrites your creative instructions. Generators register assets without silently mutating scenes; video generation stays a separate specialized worker. Image uploads use OpenAI file handoff and store exact downloaded bytes without base64 conversion. Completed renders, previews and uploaded media return durable public HTTPS URLs. MP4 rendering is asynchronous: studio_render_creative_project returns a job_id immediately and you poll studio_get_render_job until it completes or fails.\n\n" +
+  "Studio is deterministic creative execution for your own creative work. You own concept, copy, art direction, image generation and HTML/UI design; Studio owns persistent projects, layers, assets, timeline, validation, revisions, preview, rendering and export. Create a Creative Studio project, or submit a complete CreativeDocument you authored and have it validated and persisted as revision 1. Edit it through atomic, validated transactions where the whole transaction applies or fails without partial mutation, and every accepted transaction creates one recoverable revision. Inspect your work visually: render an exact still frame, or a multi-timestamp contact sheet, from the current revision using the same composition as the final render, then critique the returned image and edit again. No Studio tool reinterprets, redesigns or rewrites your creative instructions. Generators register assets without silently mutating scenes; video generation stays a separate specialized worker. Image uploads use OpenAI file handoff and store exact downloaded bytes without base64 conversion. Completed renders, generated media and uploaded media return durable public HTTPS URLs. Preview frames and contact sheets are the exception: they come back inline in the response as small WebP images and are never stored, so look at them in the response; there is no URL to fetch them from later. MP4 rendering is asynchronous: studio_render_creative_project returns a job_id immediately and you poll studio_get_render_job until it completes or fails.\n\n" +
   // Appended rather than written inline: the lifecycle paragraph above says
   // what Studio is, and this says which primitive to use, which is the
   // half an agent was previously left to discover by rejection. It arrives on
@@ -106,92 +106,41 @@ function toolResult(
   return complete(message, body);
 }
 
-function creativePreviewImageDescriptors(
+/**
+ * Lifts the preview images a creative tool rendered into MCP image content.
+ *
+ * The bytes arrive in memory on the tool result (see inline-images.ts) and go
+ * straight into the response — previews are never stored, so there is nothing
+ * to fetch back and nothing left behind once the assistant has looked.
+ * `return_images` on the contact sheet tool picks sheet, frames or both;
+ * every other tool sends everything it rendered.
+ */
+function creativePreviewImageContent(
   name: string,
   value: unknown,
   args: Record<string, unknown>,
-): Array<{ url: string; mimeType: string }> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  const result = value as Record<string, unknown>;
-  if (name === "studio_render_creative_contact_sheet" && (args.return_images === "frames" || args.return_images === "both")) {
-    const frames = Array.isArray(result.frames) ? result.frames : [];
-    const frameImages = frames.flatMap((entry) => {
-      if (!entry || typeof entry !== "object") return [];
-      const frame = entry as Record<string, unknown>;
-      return typeof frame.output_url === "string" && frame.output_url.startsWith("https://")
-        ? [{ url: frame.output_url, mimeType: typeof frame.content_type === "string" ? frame.content_type : "image/png" }]
-        : [];
-    });
-    if (args.return_images === "frames") return frameImages;
-    const sheet = typeof result.contact_sheet_url === "string" && result.contact_sheet_url.startsWith("https://")
-      ? [{ url: result.contact_sheet_url, mimeType: typeof result.content_type === "string" ? result.content_type : "image/png" }]
-      : [];
-    return [...sheet, ...frameImages];
+): Array<Record<string, unknown>> {
+  let images = inlineImagesOf(value);
+  if (name === "studio_render_creative_contact_sheet" || name === "studio_inspect_video_asset") {
+    const wanted = args.return_images === "frames" ? ["frame"] : args.return_images === "both" ? ["sheet", "frame"] : ["sheet"];
+    images = images.filter((image) => wanted.includes(image.role));
   }
-  const url =
-    name === "studio_render_creative_frame"
-      ? result.output_url
-      : name === "studio_compare_frame"
-        ? result.difference_url
-        : name === "studio_edit_creative_project" && result.thumbnails && typeof result.thumbnails === "object"
-          ? (result.thumbnails as Record<string, unknown>).contact_sheet_url
-      : name === "studio_render_creative_contact_sheet" ||
-          name === "studio_inspect_video_asset"
-        ? result.contact_sheet_url
-        : null;
-  if (typeof url !== "string" || !url.startsWith("https://")) return [];
-  const mimeType = typeof result.content_type === "string" ? result.content_type : "image/png";
-  if (!mimeType.startsWith("image/")) return [];
-  return [{ url, mimeType }];
-}
 
-async function creativePreviewImageContent(
-  name: string,
-  value: unknown,
-  args: Record<string, unknown>,
-): Promise<Array<Record<string, unknown>>> {
-  const descriptors = creativePreviewImageDescriptors(name, value, args);
   const content: Array<Record<string, unknown>> = [];
   let totalBytes = 0;
   let omitted = 0;
-  // Deliberately sequential: at most one full-resolution response is resident
-  // while it is decoded, and one bad frame does not discard the good ones.
-  for (const descriptor of descriptors) {
-    try {
-      const remainingBytes = MAX_INLINE_PREVIEW_TOTAL_BYTES - totalBytes;
-      if (remainingBytes <= 0) throw new Error("inline response limit reached");
-      const response = await fetch(descriptor.url, { signal: AbortSignal.timeout(PREVIEW_IMAGE_FETCH_TIMEOUT_MS) });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const declaredBytes = Number(response.headers.get("content-length"));
-      const allowedBytes = Math.min(MAX_INLINE_PREVIEW_IMAGE_BYTES, remainingBytes);
-      if (Number.isFinite(declaredBytes) && declaredBytes > allowedBytes) {
-        throw new Error("image exceeds inline size limit");
-      }
-      if (!response.body) throw new Error("image response has no body");
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let imageBytes = 0;
-      while (true) {
-        const { done, value: chunk } = await reader.read();
-        if (done) break;
-        imageBytes += chunk.byteLength;
-        if (imageBytes > allowedBytes) {
-          await reader.cancel().catch(() => undefined);
-          throw new Error("image exceeds inline size limit");
-        }
-        chunks.push(chunk);
-      }
-      const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), imageBytes);
-      totalBytes += imageBytes;
-      content.push({ type: "image", data: bytes.toString("base64"), mimeType: descriptor.mimeType });
-    } catch {
+  for (const image of images) {
+    if (totalBytes + image.bytes.byteLength > MAX_INLINE_PREVIEW_TOTAL_BYTES) {
       omitted += 1;
+      continue;
     }
+    totalBytes += image.bytes.byteLength;
+    content.push({ type: "image", data: Buffer.from(image.bytes).toString("base64"), mimeType: image.mimeType });
   }
   if (omitted > 0) {
     content.push({
       type: "text",
-      text: `Could not inline ${omitted} of ${descriptors.length} preview images. Their durable URLs remain available in structuredContent.`,
+      text: `${omitted} of ${images.length} preview images were left out to keep the response under its size limit. Ask for fewer frames at a time.`,
     });
   }
   return content;
@@ -337,7 +286,7 @@ const CREATIVE_MCP_TOOLS = [
         },
         thumbnail_times_ms: {
           type: "array", minItems: 1, maxItems: 3, items: { type: "number", minimum: 0 },
-          description: "Optional exact timestamps rendered after a successful persisted edit. Returns a contact sheet and full-size frame URLs from the new revision.",
+          description: "Optional exact timestamps rendered after a successful persisted edit. Returns a contact sheet of the new revision inline as WebP; it is not stored.",
         },
         return: {
           type: "string",
@@ -360,7 +309,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_render_creative_frame",
-    description: "Render one exact still frame from the project's current validated revision and return a durable PNG URL. The image is produced by the same Remotion composition, renderer snapshot and document/asset input props as the final MP4 render, so what you see is what the final render contains. time_ms must be at least zero and less than the project's rendered duration; out-of-range values are rejected rather than clamped. Use this to visually critique your own work before rendering video.",
+    description: "Render one exact still frame from the project's current validated revision and return it inline as a WebP image (longest edge at most 1568px). The frame is not stored and has no URL. The image is produced by the same Remotion composition, renderer snapshot and document/asset input props as the final MP4 render, so what you see is what the final render contains. time_ms must be at least zero and less than the project's rendered duration; out-of-range values are rejected rather than clamped. Use this to visually critique your own work before rendering video.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -377,7 +326,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_compare_frame",
-    description: "Compare a native-size PNG/JPEG/WebP capture of the React Creative Studio preview against the exact Remotion still at the same project timestamp. Returns pixel metrics and a durable red difference image; dimensions must match.",
+    description: "Compare a native-size PNG/JPEG/WebP capture of the React Creative Studio preview against the exact Remotion still at the same project timestamp. Returns pixel metrics and a red difference image inline as WebP (not stored); dimensions must match. The comparison itself runs against the lossless render, so WebP compression never shows up as a difference.",
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -389,7 +338,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_render_creative_contact_sheet",
-    description: "Render several exact still frames from the project's current validated revision in one pass and return both a single composited contact-sheet PNG and the durable URL of every individual frame with its timestamp and frame index. Uses the same composition and renderer snapshot as the final MP4 render. Use this to review pacing, motion and composition across the whole timeline before rendering video.",
+    description: "Render several exact still frames from the project's current validated revision in one pass and return a composited contact sheet inline as WebP, plus each frame's timestamp and frame index; return_images also sends the individual frames inline. Nothing is stored and nothing has a URL. Uses the same composition and renderer snapshot as the final MP4 render. Use this to review pacing, motion and composition across the whole timeline before rendering video.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -404,7 +353,7 @@ const CREATIVE_MCP_TOOLS = [
         },
         return_images: {
           type: "string", enum: ["sheet", "frames", "both"], default: "sheet",
-          description: "Which rendered images to place directly in MCP image content. frames returns each full-resolution PNG so remote agents can inspect fine detail without reaching the asset host.",
+          description: "Which rendered images to return inline as WebP: the contact sheet, each frame, or both. Previews are not stored, so there are no URLs to fetch them from later.",
         },
       },
       required: ["project_id", "times_ms"],
@@ -577,7 +526,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_inspect_video_asset",
-    description: "Look at a source video asset before cutting to it. Renders a contact sheet of the raw footage at the timestamps you ask for, with no project and no document involved. For a probe the timeline time IS the source time, so each frame's source_ms is directly the number to put in a clip's sourceStartMs. Use this before choosing segment windows out of generated footage: a model's shot timings do not match the prompt that asked for them, and the alternative is cutting blind, rendering the whole film and reading the mistake backwards. Rejects a timestamp past the end of the asset rather than clamping it, so you are never handed a frame from a different moment than the one you asked about. At most 12 timestamps per call; each frame is a separate render.",
+    description: "Look at a source video asset before cutting to it. Renders a contact sheet of the raw footage at the timestamps you ask for, returned inline as WebP and not stored, with no project and no document involved. For a probe the timeline time IS the source time, so each frame's source_ms is directly the number to put in a clip's sourceStartMs. Use this before choosing segment windows out of generated footage: a model's shot timings do not match the prompt that asked for them, and the alternative is cutting blind, rendering the whole film and reading the mistake backwards. Rejects a timestamp past the end of the asset rather than clamping it, so you are never handed a frame from a different moment than the one you asked about. At most 12 timestamps per call; each frame is a separate render.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -606,7 +555,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_analyze_reference_video",
-    description: "Measure a registered reference video deterministically from rendered source frames: sampled cut evidence, shot durations, frame-change scores, visual density, luminance contrast, composition centre and palette. This is not OCR or a vision model and explicitly reports what it cannot infer. Sampling renders cost the same as source-frame inspection and is capped to keep one analysis bounded.",
+    description: "Measure a registered reference video deterministically from rendered source frames: sampled cut evidence, shot durations, frame-change scores, visual density, luminance contrast, composition centre and palette. This is not OCR or a vision model and explicitly reports what it cannot infer. The sampled frames come back as one inline WebP contact sheet that is not stored. Sampling renders cost the same as source-frame inspection and is capped to keep one analysis bounded.",
     inputSchema: { type: "object", additionalProperties: false, properties: { asset_id: { type: "string" }, sample_interval_ms: { type: "number", minimum: 250, default: 1000 } }, required: ["asset_id"] },
   },
   {
@@ -616,7 +565,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_compare_creative_revisions",
-    description: "Render the same requested timestamps from two owned revisions of one project into separate contact sheets, then return their document delta and structural-similarity measurements. This compares actual revision renders; it does not pretend to be the still-missing React-preview-vs-Remotion raster parity test.",
+    description: "Render the same requested timestamps from two owned revisions of one project into separate contact sheets (returned inline as WebP, left then right, not stored), then return their document delta and structural-similarity measurements. This compares actual revision renders; it does not pretend to be the still-missing React-preview-vs-Remotion raster parity test.",
     inputSchema: { type: "object", additionalProperties: false, properties: { project_id: { type: "string" }, left_revision_id: { type: "string" }, right_revision_id: { type: "string", description: "Omit for the current revision." }, times_ms: { type: "array", minItems: 1, maxItems: 12, items: { type: "number", minimum: 0 } } }, required: ["project_id", "left_revision_id", "times_ms"] },
   },
   {
@@ -852,7 +801,7 @@ export async function handleMcpMessage(
           return response(message.id, toolResult(message, "Creative Studio runtime is unavailable.", true));
         }
         const value = await deps.creative(name, args);
-        const previewContent = await creativePreviewImageContent(name, value, args as Record<string, unknown>);
+        const previewContent = creativePreviewImageContent(name, value, args as Record<string, unknown>);
         return response(message.id, toolResult(message, value, false, previewContent));
       }
 

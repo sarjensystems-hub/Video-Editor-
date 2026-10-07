@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCanonicalCreativeFixture } from "./fixtures";
 import type { CreativeDocument } from "./schema";
+import { inlineImagesOf } from "../mcp-server/inline-images";
 
 const renderFrames = vi.fn();
 const renderFrame = vi.fn();
@@ -190,19 +191,20 @@ describe("Creative Studio MCP smoke path", () => {
       user_credits: [{ user_id: "user-1", balance: 500 }],
       credit_transactions: [],
     };
-    renderFrames.mockImplementation(async ({ timesMs, outputKeys, contactSheetKey }) => ({
+    renderFrames.mockImplementation(async ({ timesMs, contactSheet }) => ({
       frames: timesMs.map((timeMs: number, index: number) => ({
-        url: `https://cdn.example.com/${outputKeys[index]}`,
-        contentType: "image/png",
+        bytes: new Uint8Array([index]),
+        contentType: "image/webp",
         sizeBytes: 100 + index,
+        png: new Uint8Array([0x89, 0x50, 0x4e, 0x47, index]),
         renderer: "remotion-vercel" as const,
         frame: Math.floor((timeMs * 30) / 1000),
         timeMs,
       })),
-      contactSheet: contactSheetKey
+      contactSheet: contactSheet
         ? {
-            url: `https://cdn.example.com/${contactSheetKey}`,
-            contentType: "image/png",
+            bytes: new Uint8Array([9]),
+            contentType: "image/webp",
             sizeBytes: 4096,
             columns: 2,
             rows: 1,
@@ -491,8 +493,10 @@ describe("Creative Studio MCP smoke path", () => {
 
     expect(frame.frame).toBe(45);
     expect(frame.time_ms).toBe(1500);
-    expect(frame.content_type).toBe("image/png");
-    expect(String(frame.output_url)).toContain(`creative-previews/user-1/${imported.project_id}/`);
+    expect(frame.content_type).toBe("image/webp");
+    // Previews travel inline and are never stored, so there is no URL.
+    expect(frame).not.toHaveProperty("output_url");
+    expect(inlineImagesOf(frame)).toHaveLength(1);
     // The preview renders the revision the edit produced, not the one before it.
     expect(frame.revision_id).toBe(tables.creative_projects[0].current_revision_id);
     expect(renderFrames.mock.calls[0][0].document.scenes[0].elements.find((e: { id: string }) => e.id === "headline").text)
@@ -534,7 +538,9 @@ describe("Creative Studio MCP smoke path", () => {
 
     expect(sheet.rendered_duration_ms).toBe(8000);
     expect(sheet.contact_sheet_columns).toBe(2);
-    expect(String(sheet.contact_sheet_url)).toContain("sheet-0-120.png");
+    expect(sheet).not.toHaveProperty("contact_sheet_url");
+    // The sheet first, then each frame; the MCP layer picks what was asked for.
+    expect(inlineImagesOf(sheet).map((image) => image.role)).toEqual(["sheet", "frame", "frame"]);
     expect(sheet.frames).toEqual([
       expect.objectContaining({ time_ms: 0, frame: 0 }),
       expect.objectContaining({ time_ms: 4000, frame: 120 }),
