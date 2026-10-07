@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { deleteWorkspaceWithFiles } from "@/lib/workspace-delete";
 
 export async function switchSite(siteId: string) {
   const cookieStore = await cookies();
@@ -21,13 +22,12 @@ export async function createSite(formData: FormData) {
 
   const name = formData.get("name") as string;
   const url = formData.get("url") as string;
-  const platform = formData.get("platform") as string;
 
   if (!name?.trim()) return { error: "Site name is required" };
 
   const { data, error } = await supabase
     .from("sites")
-    .insert({ user_id: user.id, name: name.trim(), url: url?.trim() || null, platform: platform || null })
+    .insert({ user_id: user.id, name: name.trim(), url: url?.trim() || null })
     .select("id")
     .single();
 
@@ -49,13 +49,12 @@ export async function deleteSite(siteId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
-  const { error } = await supabase
-    .from("sites")
-    .delete()
-    .eq("id", siteId)
-    .eq("user_id", user.id);
-
-  if (error) return { error: error.message };
+  try {
+    const { found } = await deleteWorkspaceWithFiles(supabase, user.id, siteId);
+    if (!found) return { error: "Workspace not found" };
+  } catch (cause) {
+    return { error: cause instanceof Error ? cause.message : "Could not delete the workspace" };
+  }
 
   // If deleted site was active, switch to another or clear the cookie
   const cookieStore = await cookies();

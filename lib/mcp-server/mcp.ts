@@ -690,7 +690,7 @@ export const VIDEO_MCP_TOOLS = [
   {
     name: "studio_upload_image",
     description:
-      "Persist the exact ChatGPT-generated or user-uploaded image file for the authenticated Studio user and return a durable public HTTPS URL suitable for Buffer and other publishing workflows. Pass the actual file; do not convert it to base64.",
+      "Persist the exact ChatGPT-generated or user-uploaded image file for the authenticated Studio user and return a durable public HTTPS URL, stored in the user's own folder. Pass the actual file; do not convert it to base64.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

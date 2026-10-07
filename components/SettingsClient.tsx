@@ -16,12 +16,12 @@ const TABS = [
   { id: "keys",       label: "API keys",   icon: KeyRound },
   { id: "appearance", label: "Appearance", icon: Sun },
   { id: "account",    label: "Account",    icon: User },
-  { id: "websites",   label: "Websites",   icon: Globe },
+  { id: "workspaces", label: "Workspaces", icon: Globe },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
 
-type Site = { id: string; name: string; url: string | null; platform: string | null };
+type Site = { id: string; name: string; url: string | null };
 
 interface Props {
   email: string;
@@ -149,8 +149,8 @@ export default function SettingsClient({ email, sites, activeSiteId, keyStatus }
           </div>
         )}
 
-        {activeTab === "websites" && (
-          <Card title="Websites" hint="Manage the websites connected to your account.">
+        {activeTab === "workspaces" && (
+          <Card title="Workspaces" hint="Deleting a workspace also deletes the videos generated in it. Projects are kept and simply lose the workspace.">
             {deleteError && (
               <div className="mb-4 flex items-center gap-2 rounded-[10px] bg-danger-wash px-3.5 py-3">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-danger" />
@@ -158,7 +158,7 @@ export default function SettingsClient({ email, sites, activeSiteId, keyStatus }
               </div>
             )}
             {sites.length === 0 ? (
-              <p className="text-sm text-ink-faint">No websites added yet.</p>
+              <p className="text-sm text-ink-faint">No workspaces yet.</p>
             ) : (
               <ul className="grid gap-2">
                 {sites.map((site) => (
@@ -201,7 +201,7 @@ export default function SettingsClient({ email, sites, activeSiteId, keyStatus }
                       <button
                         onClick={() => { setConfirmDeleteId(site.id); setDeleteError(null); }}
                         className="shrink-0 rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-danger-wash hover:text-danger"
-                        title="Delete website"
+                        title="Delete workspace"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

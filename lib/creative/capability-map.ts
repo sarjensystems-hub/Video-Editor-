@@ -30,7 +30,6 @@
  *    lists, so this cannot advertise something the engine does not have.
  */
 
-import { CREATIVE_OPERATION_TYPES } from "./operation-contract";
 
 export interface CreativeCapabilityEntry {
   /** What the agent is about to do, in the agent's own terms. */
@@ -211,7 +210,3 @@ export function creativeCapabilityReferences(): string[] {
   return [...new Set(CREATIVE_CAPABILITY_MAP.flatMap((entry) => entry.use))];
 }
 
-/** Operation types named by the map, as opposed to tool names. */
-export function creativeCapabilityOperations(): string[] {
-  return creativeCapabilityReferences().filter((name) => CREATIVE_OPERATION_TYPES.includes(name));
-}

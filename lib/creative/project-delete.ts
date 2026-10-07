@@ -85,25 +85,38 @@ export async function deleteCreativeProjectWithFiles(
   return { found: true, filesRemoved: removed };
 }
 
-/** Which of `urls` a surviving row still points at. */
-async function urlsStillReferenced(
+/**
+ * Which of `urls` a surviving row still points at: an asset, a generated
+ * video, a render, or a character reference another generation was made from.
+ * Shared by every delete that removes files.
+ */
+export async function urlsStillReferenced(
   supabase: SupabaseClient,
   userId: string,
   urls: string[],
 ): Promise<Set<string>> {
-  const [assets, videos, renders] = await Promise.all([
+  const [assets, videos, renders, generations] = await Promise.all([
     supabase.from("creative_assets").select("url").eq("user_id", userId).in("url", urls),
     supabase.from("video_generations").select("video_url").eq("user_id", userId).in("video_url", urls),
     supabase.from("creative_render_jobs").select("output_url").eq("user_id", userId).in("output_url", urls),
+    // Character references live inside a JSON array, so they are read whole.
+    supabase.from("video_generations").select("characters").eq("user_id", userId),
   ]);
-  for (const result of [assets, videos, renders]) {
+  for (const result of [assets, videos, renders, generations]) {
     // If a check cannot be made, keep everything: an orphaned file is cheap,
     // a deleted file something still uses is not.
     if (result.error) return new Set(urls);
   }
+  const wanted = new Set(urls);
+  const characterUrls = (generations.data ?? []).flatMap((row) =>
+    Array.isArray(row.characters)
+      ? (row.characters as Array<{ url?: unknown }>).map((character) => String(character?.url ?? ""))
+      : [],
+  );
   return new Set([
     ...(assets.data ?? []).map((row) => String(row.url)),
     ...(videos.data ?? []).map((row) => String(row.video_url)),
     ...(renders.data ?? []).map((row) => String(row.output_url)),
+    ...characterUrls.filter((url) => wanted.has(url)),
   ]);
 }

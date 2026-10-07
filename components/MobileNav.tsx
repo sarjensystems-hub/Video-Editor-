@@ -15,7 +15,6 @@ export type Workspace = {
   id: string;
   name: string;
   url: string | null;
-  platform: string | null;
   is_default: boolean;
 };
 

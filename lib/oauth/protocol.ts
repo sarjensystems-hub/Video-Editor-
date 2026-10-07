@@ -8,8 +8,6 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
  * takeover, and a PKCE verifier compared with `===` leaks timing.
  */
 
-export const SUPPORTED_CODE_CHALLENGE_METHODS = ["S256"] as const;
-
 /** Authorization codes are single-use and short-lived by design. */
 export const AUTHORIZATION_CODE_TTL_MS = 60_000;
 

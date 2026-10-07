@@ -21,7 +21,7 @@ npm run dev
 ## Before you push
 
 ```bash
-npm test            # 1185 tests
+npm test            # unit tests
 npx tsc --noEmit    # types
 ```
 
@@ -38,6 +38,7 @@ to `main` deploys straight to production — there is no staging step.
 | `lib/creative/` | The document model, editing, validation and rendering |
 | `lib/mcp-server/` | The connector protocol and the video job runner |
 | `lib/brand.ts` | Product name and the AI-facing tool prefix |
+| `lib/storage.ts` | Uploads and deletes; one folder per user |
 | `supabase/` | Database setup, in the order to run it |
 
 ## Conventions

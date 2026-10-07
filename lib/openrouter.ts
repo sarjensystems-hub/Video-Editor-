@@ -113,53 +113,6 @@ export async function fetchAIResponseWithImages(
 }
 
 /**
- * Vision call targeting a specific model with no Gemini fallback.
- * Used for the Haiku vision pipeline (section screenshots → HTML).
- * On 429, retries the same model with backoff instead of switching models.
- *
- * content: OpenAI-style content-part array (text + image_url parts).
- */
-export async function fetchVisionResponse(
-  content: unknown,
-  maxTokens = 8000,
-  model = "anthropic/claude-haiku-4-5",
-): Promise<string> {
-  const apiKey = await requireOpenRouterKey();
-
-  const delays = [2000, 4000, 8000];
-  let res: Response | null = null;
-
-  for (let attempt = 0; attempt <= delays.length; attempt++) {
-    res = await callOpenRouter(model, content, maxTokens, false, apiKey);
-
-    if (res.status !== 429) break;
-
-    if (attempt < delays.length) {
-      console.warn(`[openrouter:vision] 429 on attempt ${attempt + 1}, retrying in ${delays[attempt]}ms…`);
-      await new Promise((r) => setTimeout(r, delays[attempt]));
-    }
-  }
-
-  if (!res!.ok) {
-    const errText = await res!.text().catch(() => "(could not read body)");
-    const msg = `OpenRouter vision ${res!.status}: ${errText}`;
-    console.error(msg);
-    throw new Error(msg);
-  }
-
-  const data = await res!.json();
-  const responseContent: string = data.choices?.[0]?.message?.content ?? "";
-
-  if (!responseContent) {
-    const detail = JSON.stringify(data);
-    console.error("OpenRouter vision returned empty content:", detail);
-    throw new Error(`Vision model returned empty response. Raw: ${detail.slice(0, 300)}`);
-  }
-
-  return responseContent;
-}
-
-/**
  * Extract a JSON object from a response that may be wrapped in markdown code fences.
  * Handles:  ```json … ```  |  ``` … ```  |  bare { … }
  *

@@ -27,12 +27,7 @@ with — a paid plan on a personal address is fine.
 | **Supabase** | Free | The database *and* the media storage: projects, revisions, assets, render jobs, generated images/audio/video, and the sign-ins that let ChatGPT connect. |
 | **OpenRouter** | Prepaid | Pays for everything the AI generates — text, images, speech, music, video. **Each user brings their own account**: the key is saved per user in Settings, and there is no shared key in the deployment. |
 | **GitHub** | Free | Holds the code. Vercel deploys from it on every push. |
-| An email account | — | Sends password resets. Gmail works with an App Password. |
-
-Cloudflare R2 is optional and not used by default — this deployment stores
-media in Supabase Storage instead (see `supabase/add_storage_buckets.sql`).
-Set the `R2_*` variables in `.env.example` only if you outgrow Supabase
-Storage's free-tier quota and want to move media to R2 later.
+| An email account | Optional | Only if password-reset emails should come from your own domain: set it as the SMTP sender in Supabase (Authentication → Emails). Supabase sends them either way. |
 
 ## Steps
 
@@ -44,11 +39,10 @@ from here on every deployment.
 ### 2. Set up the database and storage
 
 Create a Supabase project. Then open **SQL Editor → New query** and run the
-ten files in `supabase/`, in the order given in `supabase/README.md`. Order
-matters — later files reference tables (and, for the last file, the storage
-buckets) the earlier ones create. The last file, `add_storage_buckets.sql`,
-creates the two public Storage buckets this deployment uses in place of
-Cloudflare R2 — no separate storage account is needed.
+files in `supabase/`, in the order given in `supabase/README.md`. Order
+matters — later files reference tables the earlier ones create.
+`add_storage_buckets.sql` creates the Storage buckets, so no separate storage
+account is needed: every user's files live in their own folder of one bucket.
 
 From **Project Settings → API**, copy three values for the next step: the
 project URL, the `anon` key, and the `service_role` key.

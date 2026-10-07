@@ -21,7 +21,6 @@ import {
 } from "./evaluate";
 import type {
   CreativeDocument,
-  CreativeElement,
   CreativeUiElement,
   CreativeUiNode,
   CreativeUiNodeKind,
@@ -72,10 +71,6 @@ export interface ResolvedCreativeUiElement {
   scrollY: number;
   nodes: ResolvedCreativeUiNode[];
   pointer: ResolvedCreativeUiPointer | null;
-}
-
-export function isCreativeUiElement(element: CreativeElement): element is CreativeUiElement {
-  return element.type === "ui";
 }
 
 /** Registered asset IDs referenced by a UI node tree, in first-seen order. */

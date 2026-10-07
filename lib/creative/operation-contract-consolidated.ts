@@ -1,51 +1,10 @@
 import * as base from "./operation-contract-base";
-import { ANIMATION_PROPERTIES, SCENE_TRANSITION_KINDS } from "./schema";
 import type { CreativeTransactionOperation } from "./transactions";
 
 type JsonSchema = Record<string, unknown>;
 const str = (description?: string): JsonSchema => ({ type: "string", minLength: 1, ...(description ? { description } : {}) });
 const num = (description?: string): JsonSchema => ({ type: "number", ...(description ? { description } : {}) });
 
-const flatColorSchema: JsonSchema = {
-  oneOf: [
-    { type: "object", additionalProperties: false, properties: { kind: { type: "string", enum: ["literal"] }, value: str() }, required: ["kind", "value"] },
-    { type: "object", additionalProperties: false, properties: { kind: { type: "string", enum: ["token"] }, token: str() }, required: ["kind", "token"] },
-  ],
-};
-const easingSchema: JsonSchema = {
-  oneOf: [
-    { type: "string", enum: ["linear", "ease-in", "ease-out", "ease-in-out", "spring-soft", "spring-snappy"] },
-    { type: "object", additionalProperties: false, properties: { kind: { type: "string", enum: ["cubic-bezier"] }, x1: num(), y1: num(), x2: num(), y2: num() }, required: ["kind", "x1", "y1", "x2", "y2"] },
-  ],
-};
-const strokeSchema: JsonSchema = {
-  type: "object", additionalProperties: false,
-  properties: { width: num(), color: flatColorSchema }, required: ["width", "color"],
-};
-const motionPresetSchema: JsonSchema = {
-  type: "object", additionalProperties: false,
-  properties: {
-    durationMs: num(), easing: easingSchema,
-    tracks: {
-      type: "array", minItems: 1,
-      items: {
-        type: "object", additionalProperties: false,
-        properties: {
-          property: { type: "string", enum: [...ANIMATION_PROPERTIES] },
-          mode: { type: "string", enum: ["absolute", "delta", "multiplier"] },
-          from: num(), to: num(),
-        },
-        required: ["property", "mode", "from", "to"],
-      },
-    },
-  },
-  required: ["durationMs", "easing", "tracks"],
-};
-const sceneTransitionPresetSchema: JsonSchema = {
-  type: "object", additionalProperties: false,
-  properties: { kind: { type: "string", enum: [...SCENE_TRANSITION_KINDS] }, durationMs: num(), easing: easingSchema },
-  required: ["kind", "durationMs", "easing"],
-};
 
 function operation(type: string, properties: Record<string, JsonSchema>, required: string[]): JsonSchema {
   return {

@@ -25,8 +25,8 @@
 ## Billing is off
 
 - Nothing meters or charges. `lib/credit-costs.ts` returns zero for everything
-  and every account bypasses charging, because this deployment bills the
-  company's own OpenRouter and Vercel accounts directly.
+  and every account bypasses charging: each user's generation is billed to
+  their own OpenRouter key, and hosting is a flat Vercel fee.
 - The shape is kept so real limits can be reintroduced by editing that one
   file. Do not wire in a payment provider without being asked.
 
@@ -48,6 +48,16 @@
   only build-time metadata falls back to the environment. Do not reintroduce a
   placeholder host — the old one shipped inside the MCP URL users were told to
   paste into ChatGPT.
+
+## Storage
+
+- Every file lives under `<userId>/<kind>/…`, built only by
+  `lib/storage-paths.ts`; a guard test fails on a hand-built path. The bucket
+  policy allows a write only into the writer's own folder.
+- Preview frames are never stored. They are rendered in memory and returned
+  inline as WebP (`lib/mcp-server/inline-images.ts`).
+- Anything that deletes a project or workspace deletes its files too, through
+  `deleteUserFiles`, keeping any file a surviving row still references.
 
 ## Row-level security
 

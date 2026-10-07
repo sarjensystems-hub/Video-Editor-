@@ -719,5 +719,3 @@ export function setDesignSystem(document: CreativeDocument, designSystem: Creati
   return success({ ...document, designSystem: cloneDesignSystem(designSystem) });
 }
 
-export const addGroup = createGroup;
-export const removeGroup = ungroup;

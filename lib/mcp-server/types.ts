@@ -55,47 +55,6 @@ export interface VideoProvider {
   download(providerJobId: string): Promise<{ bytes: Buffer; contentType: string }>;
 }
 
-export interface VideoJob {
-  id: string;
-  idempotencyKey: string;
-  provider: VideoProviderName;
-  providerJobId: string | null;
-  model: string;
-  mode: VideoMode;
-  status: VideoJobState;
-  prompt: string;
-  references: VideoReference[];
-  aspectRatio: VideoAspectRatio;
-  resolution: VideoResolution;
-  duration: number;
-  generateAudio: boolean;
-  videoUrl: string | null;
-  error: string | null;
-  costUsd: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreatePendingVideoJob {
-  idempotencyKey: string;
-  provider: VideoProviderName;
-  model: string;
-  mode: VideoMode;
-  prompt: string;
-  references: VideoReference[];
-  aspectRatio: VideoAspectRatio;
-  resolution: VideoResolution;
-  duration: number;
-  generateAudio: boolean;
-}
-
-export interface VideoJobRepository {
-  findByIdempotencyKey(key: string): Promise<VideoJob | null>;
-  createPending(input: CreatePendingVideoJob): Promise<{ job: VideoJob; created: boolean }>;
-  getById(id: string): Promise<VideoJob | null>;
-  update(id: string, patch: Partial<VideoJob>): Promise<VideoJob>;
-}
-
 export class VideoValidationError extends Error {}
 
 function record(input: unknown): Record<string, unknown> {
@@ -205,25 +164,3 @@ export function parseGenerateVideoRequest(input: unknown): GenerateVideoRequest 
     siteId,
   };
 }
-
-export function serializeVideoJob(job: VideoJob) {
-  return {
-    job_id: job.id,
-    status: job.status,
-    provider: job.provider,
-    model: job.model,
-    mode: job.mode,
-    video_url: job.videoUrl,
-    error: job.error,
-    cost_usd: job.costUsd,
-    created_at: job.createdAt,
-    updated_at: job.updatedAt,
-  };
-}
-
-export const TERMINAL_VIDEO_STATES = new Set<VideoJobState>([
-  "completed",
-  "failed",
-  "cancelled",
-  "expired",
-]);

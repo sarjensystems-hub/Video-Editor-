@@ -117,7 +117,7 @@ describe("Creative Runtime V2 architectural guards", () => {
     for (const relative of graph) {
       const source = readFileSync(join(ROOT, relative), "utf8");
       expect(
-        /fetchAIResponse|fetchAIResponseWithImages|fetchVisionResponse|planCreativeTransaction/.test(source),
+        /fetchAIResponse|fetchAIResponseWithImages|planCreativeTransaction/.test(source),
         `${relative} reaches an OpenRouter chat-planning helper from the ChatGPT creative path`,
       ).toBe(false);
     }

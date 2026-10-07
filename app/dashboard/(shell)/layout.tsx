@@ -15,7 +15,7 @@ export default async function DashboardLayout({
 
   const sitesResult = await supabase
     .from("sites")
-    .select("id, name, url, platform, is_default")
+    .select("id, name, url, is_default")
     .eq("user_id", user.id)
     .order("created_at", { ascending: true });
 

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   MP3_SAMPLES_PER_GRANULE,
   gainToAmplitude,
-  isVbrHeaderFrame,
   parseMp3Envelope,
   readGranuleGains,
   readMp3FrameHeader,

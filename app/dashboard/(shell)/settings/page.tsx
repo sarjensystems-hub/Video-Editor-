@@ -9,7 +9,7 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   const [sitesResult, activeSiteId, keyStatus] = await Promise.all([
-    supabase.from("sites").select("id, name, url, platform").eq("user_id", user!.id).order("created_at", { ascending: true }),
+    supabase.from("sites").select("id, name, url").eq("user_id", user!.id).order("created_at", { ascending: true }),
     getActiveSiteId(),
     readOpenRouterKeyStatus(supabase, user!.id),
   ]);
@@ -19,7 +19,7 @@ export default async function SettingsPage() {
       <PageHeader
         eyebrow="Account"
         title="Settings"
-        description="Your API keys, appearance, sign-in details and the websites this account works on."
+        description="Your API keys, appearance, sign-in details and workspaces."
       />
       <SettingsClient
         email={user?.email ?? ""}

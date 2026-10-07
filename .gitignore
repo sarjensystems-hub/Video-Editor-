@@ -36,3 +36,6 @@ next-env.d.ts
 
 # Transient per-agent git worktrees; auto-cleaned, never committed.
 .claude/worktrees/
+
+# Personal Claude Code permissions, never shared
+.claude/settings.local.json

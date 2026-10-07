@@ -4,10 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
   clearUserOpenRouterKey,
-  readOpenRouterKeyStatus,
   saveUserOpenRouterKey,
   verifyOpenRouterKey,
-  type OpenRouterKeyStatus,
 } from "@/lib/openrouter-key";
 import { isLikelyOpenRouterKey } from "@/lib/user-secrets";
 
@@ -74,11 +72,4 @@ export async function testStoredOpenRouterKey(): Promise<{ ok: true; label: stri
 
   const check = await verifyOpenRouterKey(stored);
   return check.ok ? { ok: true, label: check.label } : { ok: false, error: check.error };
-}
-
-export async function getOpenRouterKeyStatus(): Promise<OpenRouterKeyStatus | null> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  return readOpenRouterKeyStatus(supabase, user.id);
 }
