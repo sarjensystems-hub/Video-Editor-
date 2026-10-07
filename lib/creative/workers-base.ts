@@ -137,7 +137,7 @@ export async function generateCreativeSpeechAsset(
   return registerRuntimeCreativeAsset(context, {
     projectId: input.projectId,
     kind: "audio",
-    source: "gemini-3.1-flash-tts/openrouter",
+    source: `${DEFAULT_SPEECH_MODEL.split("/").pop()}/openrouter`,
     url,
     mimeType: generated.contentType,
     filename: normalizeGeneratedAssetFilename(label, speechExtension),

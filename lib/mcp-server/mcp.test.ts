@@ -114,7 +114,7 @@ describe("Studio media MCP", () => {
       (tool: { name: string }) => tool.name === "studio_generate_speech_asset",
     );
 
-    expect(speech.description).toMatch(/Gemini 3\.1 Flash TTS/i);
+    expect(speech.description).toMatch(/Gemini 3\.8 Flash TTS/i);
     expect(speech.description).toMatch(/70\+ languages/i);
     expect(speech.inputSchema.properties.language.enum).toBeUndefined();
     expect(speech.inputSchema.properties.voice.enum).toHaveLength(30);

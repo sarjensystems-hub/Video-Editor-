@@ -8,9 +8,10 @@
  *
  * Model choices, from the live OpenRouter catalogue:
  *
- * - Speech: `google/gemini-3.1-flash-tts-preview`. It supports 70+ languages,
- *   thirty named voices, natural-language performance direction and inline
- *   audio tags. Language is detected from the script rather than coupled to a
+ * - Speech: `google/gemini-3.8-flash-tts`, the successor to 3.1 Flash TTS
+ *   Preview, ranked first for text-to-speech on Design Arena and under half its
+ *   price. It keeps the same thirty named voices, 70+ languages,
+ *   natural-language performance direction and inline audio tags. Language is detected from the script rather than coupled to a
  *   provider-specific voice id.
  * - Music: `google/lyria-3-clip-preview` at $0.04 per 30-second clip. The Pro
  *   variant generates full songs for $0.08 and is overkill for short social.
@@ -19,7 +20,7 @@
  * want it; Gemini detects the language from the supplied script itself.
  */
 
-export const DEFAULT_SPEECH_MODEL = "google/gemini-3.1-flash-tts-preview";
+export const DEFAULT_SPEECH_MODEL = "google/gemini-3.8-flash-tts";
 export const DEFAULT_MUSIC_MODEL = "google/lyria-3-clip-preview";
 
 /**

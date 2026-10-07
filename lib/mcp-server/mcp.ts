@@ -441,7 +441,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_generate_speech_asset",
-    description: "Generate a voiceover with Google Gemini 3.1 Flash TTS Preview and register it as an audio asset. The model automatically detects 70+ languages and takes natural-language direction plus inline audio tags such as [whispers], [excited] and [laughs]. Mark the script off from the direction when the line is short - `[deadpan] White. Black. Still.` returns silence, while `Say the following line in a dry, deadpan tone: \"White. Black. Still.\"` does not; a bare tag is only safe ahead of a long line. Returns the asset; the document is not mutated - place it on the timeline with an add_audio_clip edit transaction.",
+    description: "Generate a voiceover with Google Gemini 3.8 Flash TTS and register it as an audio asset. The model automatically detects 70+ languages and takes natural-language direction plus inline audio tags such as [whispers], [excited] and [laughs]. Mark the script off from the direction when the line is short - `[deadpan] White. Black. Still.` returns silence, while `Say the following line in a dry, deadpan tone: \"White. Black. Still.\"` does not; a bare tag is only safe ahead of a long line. Returns the asset; the document is not mutated - place it on the timeline with an add_audio_clip edit transaction.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

@@ -1,12 +1,12 @@
 /**
- * Image generation through Gemini on OpenRouter, billed to the requesting
- * account's own key. Returns an `AIImageResult` for `uploadAIImage()` in
+ * Image generation through OpenAI's GPT Image 2.5 Sunburst on OpenRouter,
+ * billed to the requesting account's own key. Returns an `AIImageResult` for `uploadAIImage()` in
  * `lib/storage.ts` to persist.
  */
 
 import { getOpenRouterKey } from "./openrouter-key";
 import { appUrl } from "@/lib/app-url";
-const IMAGE_MODEL = "google/gemini-3.1-flash-image-preview";
+export const IMAGE_MODEL = "openai/gpt-image-2.5-sunburst";
 
 type CanvasFmt = "landscape" | "square" | "portrait";
 
@@ -31,7 +31,7 @@ interface CallOpts {
   model?:      string;
 }
 
-async function callGeminiImage({ content, aspectRatio, logTag, model = IMAGE_MODEL }: CallOpts): Promise<AIImageResult> {
+async function callImageModel({ content, aspectRatio, logTag, model = IMAGE_MODEL }: CallOpts): Promise<AIImageResult> {
   const apiKey = await getOpenRouterKey();
   if (!apiKey) {
     console.warn(`[${logTag}] No OpenRouter key for this request — the account has not added one`);
@@ -50,8 +50,9 @@ async function callGeminiImage({ content, aspectRatio, logTag, model = IMAGE_MOD
       body: JSON.stringify({
         model,
         messages:   [{ role: "user", content }],
-        modalities: ["image", "text"],
-        extra_body: { imageConfig: { aspectRatio } },
+        // GPT Image outputs images only; asking for text too is rejected.
+        modalities:   ["image"],
+        image_config: { aspect_ratio: aspectRatio },
       }),
     });
 
@@ -104,7 +105,7 @@ export async function generateSocialImage(
       ]
     : prompt;
 
-  return callGeminiImage({
+  return callImageModel({
     content,
     aspectRatio: ASPECT_RATIOS[canvasFormat],
     logTag:      "image-gen",

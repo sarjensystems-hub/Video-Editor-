@@ -54,7 +54,7 @@ describe("music generation transport", () => {
 });
 
 describe("speech generation transport", () => {
-  it("requests Gemini 3.1 Flash TTS through OpenRouter's speech endpoint", async () => {
+  it("requests Gemini 3.8 Flash TTS through OpenRouter's speech endpoint", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(Buffer.from("speech"), {
       status: 200,
       headers: { "content-type": "audio/mpeg", "x-generation-id": "gen-speech" },
@@ -67,7 +67,7 @@ describe("speech generation transport", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://openrouter.ai/api/v1/audio/speech");
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body).toEqual({
-      model: "google/gemini-3.1-flash-tts-preview",
+      model: "google/gemini-3.8-flash-tts",
       input: "Hello",
       voice: "Kore",
       response_format: "pcm",
@@ -110,7 +110,7 @@ describe("speech transport speaks the format Gemini actually accepts", () => {
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.response_format).toBe("pcm");
-    expect(body.model).toBe("google/gemini-3.1-flash-tts-preview");
+    expect(body.model).toBe("google/gemini-3.8-flash-tts");
   });
 
   it("wraps headerless pcm in a real container rather than mislabelling it", async () => {

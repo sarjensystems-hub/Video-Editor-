@@ -8,8 +8,8 @@ import {
 } from "./audio-workers";
 
 describe("speech worker configuration", () => {
-  it("routes speech through Gemini 3.1 Flash TTS", () => {
-    expect(DEFAULT_SPEECH_MODEL).toBe("google/gemini-3.1-flash-tts-preview");
+  it("routes speech through Gemini 3.8 Flash TTS", () => {
+    expect(DEFAULT_SPEECH_MODEL).toBe("google/gemini-3.8-flash-tts");
   });
 
   it("pins the clip-length music model rather than the full-song one", () => {
