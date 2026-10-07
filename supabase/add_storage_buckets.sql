@@ -1,13 +1,13 @@
--- Supabase Storage buckets for the Supabase-only storage path.
+-- Supabase Storage buckets.
 --
--- article-images holds generated/uploaded creative media (images, voiceover,
--- music, finished MP4s) when R2 is not configured — see lib/storage.ts.
--- creative-render-snapshots holds the small JSON blob that caches a warm
--- Vercel Sandbox snapshot per deployment, so cold-start renders skip
--- re-bundling the Remotion composition — see lib/creative/render.ts and
+-- article-images holds every user's media — generated videos, images,
+-- voiceover, music, uploads and finished MP4s — one folder per user (see
+-- lib/storage-paths.ts). The name is historical; preview frames are never
+-- stored here. creative-render-snapshots holds the small JSON blob that
+-- caches a warm Vercel Sandbox snapshot per deployment, so cold-start renders
+-- skip re-bundling the Remotion composition — see lib/creative/render.ts and
 -- scripts/create-creative-render-snapshot.mjs. Both are public buckets: the
--- renderer and the connected AI fetch assets over plain HTTPS, the same
--- design R2 used.
+-- renderer and the connected AI fetch assets over plain HTTPS.
 
 insert into storage.buckets (id, name, public)
 values ('article-images', 'article-images', true)

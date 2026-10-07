@@ -494,8 +494,8 @@ async function renderProject(context: McpUserContext, request: CreativeProjectRe
 /**
  * Renders exact still frames from the project's current validated revision
  * using the same Remotion composition, snapshot and `{ document, assets }`
- * input props as final MP4 rendering, and stores every image permanently in
- * Studio R2 storage.
+ * input props as final MP4 rendering. The frames stay in memory and go back
+ * to the caller inline; nothing is stored.
  */
 async function renderDocumentFrames(
   context: McpUserContext,
