@@ -84,4 +84,13 @@ describe("deterministic 2.5D scene depth", () => {
       "scenes[0].groups[0].animations[0].keyframes[1].timeMs",
     ]));
   });
+
+  /**
+   * A scene moved by a transition must not drag in what its elements draw
+   * beyond the frame. `clip`, not `hidden`, so the camera's 3D depth survives.
+   */
+  it("clips each exported scene to the canvas during transitions", () => {
+    const source = readFileSync(resolve(process.cwd(), "remotion/CreativeComposition.tsx"), "utf8");
+    expect(source).toContain('<AbsoluteFill style={{ background: evaluated.background, overflow: "clip", ...presentation }}>');
+  });
 });

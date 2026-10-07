@@ -1146,8 +1146,13 @@ function SceneRenderer({
   const { flash, ...presentation } = transitionPresentation({ document, entry, localMs });
   const cameraCss = resolveCameraCss(scene.camera, localMs);
 
+  // Each scene is clipped to the canvas, the way a clip is framed in any
+  // editor. Without it, a transition that moves the scene (push, slide, whip,
+  // zoom-out) also drags in whatever its elements draw beyond the frame - an
+  // oversized background layer slides into view beside the incoming scene.
+  // `clip` rather than `hidden` so 3D depth below is not flattened.
   return (
-    <AbsoluteFill style={{ background: evaluated.background, ...presentation }}>
+    <AbsoluteFill style={{ background: evaluated.background, overflow: "clip", ...presentation }}>
       <HierarchyLayer css={cameraCss}>
       {evaluated.elements.map(({ element, transform, crop, adjustments, drawProgress, fillProgress, resolvedFill }) => {
         // Velocity for motion blur: where this element was one frame ago.
