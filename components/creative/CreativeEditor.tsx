@@ -21,6 +21,7 @@ import {
   Sliders,
   Sparkles,
   Trash2,
+  UploadCloud,
 } from "lucide-react";
 import { Button, IconButton } from "@/components/ui/Button";
 import Sheet from "@/components/ui/Sheet";
@@ -39,6 +40,8 @@ import {
   undoEditor,
 } from "@/lib/creative/editor-state";
 import type { CreativeTransaction } from "@/lib/creative/transactions";
+import { CREATIVE_ASSET_CLASSES, type CreativeAssetClass } from "@/lib/creative/asset-class";
+import CreativeAssetForm from "./CreativeAssetForm";
 import CreativeAutomationPanel from "./CreativeAutomationPanel";
 import CreativeEditorCanvas from "./CreativeEditorCanvas";
 import CreativeLayersPanel, { type EditorAsset } from "./CreativeLayersPanel";
@@ -93,6 +96,7 @@ export default function CreativeEditor({
   const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
   const [overlay, setOverlay] = useState<OverlayName | null>(null);
+  const [assetForm, setAssetForm] = useState<{ asset: EditorAsset | null; initialClass: CreativeAssetClass | null } | null>(null);
   const [railsOpen, setRailsOpen] = useState({ left: true, right: true });
   const startedAt = useRef<number | null>(null);
   const startedFrom = useRef(0);
@@ -281,14 +285,13 @@ export default function CreativeEditor({
 
   const layersPanel = (bare: boolean) => (
     <CreativeLayersPanel
-      projectId={projectId}
       document={state.document}
       sceneId={scene.id}
       selectedIds={state.selection.elementIds}
       assets={assets}
       onSelect={select}
       onTransaction={transact}
-      onAssetSaved={(asset) => appendAssets([asset])}
+      onOpenAssetForm={(asset, initialClass) => setAssetForm({ asset, initialClass })}
       onNotice={setNotice}
       bare={bare}
     />
@@ -493,6 +496,15 @@ export default function CreativeEditor({
             );
           })}
         </div>
+        <Button
+          size="sm"
+          variant="subtle"
+          className="shrink-0"
+          onClick={() => setAssetForm({ asset: null, initialClass: null })}
+          title="Upload video, narration, music or images"
+        >
+          <UploadCloud className="h-4 w-4" /> Upload
+        </Button>
         <IconButton label="Add scene" size="sm" variant="ghost" className="!border-transparent" onClick={addScene}>
           <Plus className="h-4 w-4" />
         </IconButton>
@@ -532,6 +544,23 @@ export default function CreativeEditor({
           <ToolTab icon={<Film className="h-4 w-4" />} label="Export" active={overlay === "export"} onClick={() => setOverlay("export")} />
         </nav>
       )}
+
+      <CreativeAssetForm
+        open={assetForm !== null}
+        onClose={() => setAssetForm(null)}
+        projectId={projectId}
+        asset={assetForm?.asset ?? null}
+        initialClass={assetForm?.initialClass ?? null}
+        onSaved={(asset) => {
+          appendAssets([asset]);
+          const label = CREATIVE_ASSET_CLASSES[asset.assetClass as CreativeAssetClass]?.label ?? asset.assetClass;
+          setNotice(
+            assetForm?.asset
+              ? `${asset.filename || "Asset"} filed as ${label}`
+              : `${asset.filename || "File"} uploaded as ${label}. Your assistant can use it now.`,
+          );
+        }}
+      />
 
       <Sheet open={overlay !== null} onClose={() => setOverlay(null)} title={overlay ? OVERLAY_TITLES[overlay] : ""}>
         {overlay === "layers" && layersPanel(true)}

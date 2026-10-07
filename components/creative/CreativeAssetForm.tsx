@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Music, UploadCloud, Video } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { TextAreaField } from "@/components/ui/Field";
@@ -15,7 +15,7 @@ import {
 } from "@/lib/creative/asset-class";
 import { uploadKindFor } from "@/lib/creative/asset-upload";
 import { toEditorAsset, type EditorAsset } from "@/lib/creative/editor-asset";
-import { createClient } from "@/lib/supabase/client";
+import { uploadResumable } from "@/lib/creative/resumable-upload";
 
 /** What the browser can tell about a file before it is uploaded. */
 interface MediaProbe {
@@ -79,10 +79,21 @@ function formatDuration(ms: number): string {
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
 }
 
+/** Speed and time left, once enough has moved to estimate them. */
+function uploadEta(progress: { sent: number; total: number; startedAt: number }): string {
+  const seconds = (Date.now() - progress.startedAt) / 1000;
+  if (progress.sent <= 0 || seconds < 1) return "Starting…";
+  const rate = progress.sent / seconds;
+  const left = Math.max(0, (progress.total - progress.sent) / rate);
+  const speed = `${formatBytes(rate)}/s`;
+  if (progress.sent >= progress.total) return "Finishing…";
+  return left < 60 ? `${speed} · ${Math.ceil(left)}s left` : `${speed} · ${Math.ceil(left / 60)} min left`;
+}
+
 /** Storage errors are written for developers; this is what the person needs to know. */
 function uploadErrorMessage(message: string): string {
-  if (/maximum allowed size|too large|payload/i.test(message)) {
-    return "This file is larger than your storage allows for a single file. Try a shorter or more compressed version.";
+  if (/maximum allowed size|too large|payload|\b413\b/i.test(message)) {
+    return "This file is bigger than the storage's per-file limit. Raise it in Supabase under Storage → Settings, or upload a compressed version.";
   }
   return message;
 }
@@ -113,6 +124,8 @@ export default function CreativeAssetForm({
   const [assetClass, setAssetClass] = useState<string>("");
   const [description, setDescription] = useState("");
   const [phase, setPhase] = useState<"idle" | "uploading" | "saving">("idle");
+  const [progress, setProgress] = useState<{ sent: number; total: number; startedAt: number } | null>(null);
+  const abort = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
 
@@ -181,11 +194,27 @@ export default function CreativeAssetForm({
       const issued = await ticket.json();
       if (!ticket.ok) throw new Error(issued.error ?? "Could not start the upload");
 
-      // The file goes straight from the browser into the user's own folder.
-      const { error: storageError } = await createClient()
-        .storage.from(issued.bucket)
-        .uploadToSignedUrl(issued.path, issued.token, file, { contentType: file.type || undefined });
-      if (storageError) throw new Error(uploadErrorMessage(storageError.message));
+      // The file goes straight from the browser into the user's own folder,
+      // in resumable chunks, so progress is real and any size gets through.
+      const controller = new AbortController();
+      abort.current = controller;
+      const startedAt = Date.now();
+      setProgress({ sent: 0, total: file.size, startedAt });
+      try {
+        await uploadResumable({
+          file,
+          bucket: issued.bucket,
+          path: issued.path,
+          token: issued.token,
+          signal: controller.signal,
+          onProgress: (sent, total) => setProgress({ sent, total, startedAt }),
+        });
+      } catch (cause) {
+        if (cause instanceof DOMException && cause.name === "AbortError") throw new Error("Upload cancelled.");
+        throw new Error(uploadErrorMessage(cause instanceof Error ? cause.message : String(cause)));
+      } finally {
+        abort.current = null;
+      }
 
       setPhase("saving");
       const response = await fetch("/api/creative/assets/upload", {
@@ -210,7 +239,13 @@ export default function CreativeAssetForm({
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setPhase("idle");
+      setProgress(null);
     }
+  };
+
+  const cancel = () => {
+    if (abort.current) abort.current.abort();
+    else onClose();
   };
 
   const working = phase !== "idle";
@@ -223,12 +258,12 @@ export default function CreativeAssetForm({
       title={editing ? "Asset details" : "Upload to this project"}
       footer={
         <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={working}>
-            Cancel
+          <Button variant="ghost" size="sm" onClick={cancel} disabled={phase === "saving"}>
+            {phase === "uploading" ? "Stop upload" : "Cancel"}
           </Button>
           <Button size="sm" onClick={save} disabled={!ready || working}>
             {working && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {phase === "uploading" ? "Uploading…" : phase === "saving" ? "Saving…" : editing ? "Save" : "Upload"}
+            {phase === "uploading" ? `Uploading ${progress && progress.total ? Math.floor((progress.sent / progress.total) * 100) : 0}%` : phase === "saving" ? "Saving…" : editing ? "Save" : "Upload"}
           </Button>
         </div>
       }
@@ -341,6 +376,29 @@ export default function CreativeAssetForm({
           value={description}
           onChange={(event) => setDescription(event.target.value)}
         />
+
+        {progress && (
+          <div className="grid gap-1.5" role="status" aria-live="polite">
+            <div
+              className="h-2 overflow-hidden rounded-full bg-canvas-muted"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress.total ? Math.floor((progress.sent / progress.total) * 100) : 0}
+            >
+              <div
+                className="h-full rounded-full bg-fire transition-[width] duration-300"
+                style={{ width: `${progress.total ? (progress.sent / progress.total) * 100 : 0}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] tabular-nums text-ink-faint">
+              <span>
+                {formatBytes(progress.sent)} of {formatBytes(progress.total)}
+              </span>
+              <span>{uploadEta(progress)}</span>
+            </div>
+          </div>
+        )}
 
         {error && <p className="rounded-lg bg-danger-wash px-3 py-2 text-xs text-danger">{error}</p>}
       </div>

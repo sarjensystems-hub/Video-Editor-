@@ -6,7 +6,6 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
-  ImagePlus,
   Lock,
   LockOpen,
   Music,
@@ -30,7 +29,6 @@ import {
 } from "@/lib/creative/asset-class";
 import { getCreativeDurationMs } from "@/lib/creative/evaluate";
 import { getCreativeSceneTimeline } from "@/lib/creative/remotion";
-import CreativeAssetForm from "./CreativeAssetForm";
 
 /** The asset shelf's filter tabs, each a family of classes. */
 const SHELVES: Array<{ id: string; label: string; classes: CreativeAssetClass[]; uploadAs?: CreativeAssetClass }> = [
@@ -44,33 +42,30 @@ const SHELVES: Array<{ id: string; label: string; classes: CreativeAssetClass[];
 export type { EditorAsset } from "@/lib/creative/editor-asset";
 
 export default function CreativeLayersPanel({
-  projectId,
   document: doc,
   sceneId,
   selectedIds,
   assets,
   onSelect,
   onTransaction,
-  onAssetSaved,
+  onOpenAssetForm,
   onNotice,
   bare,
 }: {
-  projectId: string;
   document: CreativeDocument;
   sceneId: string;
   selectedIds: string[];
   assets: EditorAsset[];
   onSelect: (ids: string[]) => void;
   onTransaction: (transaction: CreativeTransaction) => void;
-  /** A new upload, or an existing asset re-filed. */
-  onAssetSaved: (asset: EditorAsset) => void;
+  /** Opens the upload form, or the details of an existing asset. */
+  onOpenAssetForm: (asset: EditorAsset | null, initialClass: CreativeAssetClass | null) => void;
   onNotice: (message: string) => void;
   /** Set inside a bottom sheet, where the surrounding surface is the sheet. */
   bare?: boolean;
 }) {
   const scene = doc.scenes.find((item) => item.id === sceneId) ?? doc.scenes[0];
   const [shelf, setShelf] = useState("all");
-  const [form, setForm] = useState<{ asset: EditorAsset | null; initialClass: CreativeAssetClass | null } | null>(null);
   const activeShelf = SHELVES.find((item) => item.id === shelf) ?? SHELVES[0];
   const shelved = activeShelf.classes.length
     ? assets.filter((asset) => (activeShelf.classes as string[]).includes(asset.assetClass))
@@ -212,20 +207,12 @@ export default function CreativeLayersPanel({
   return (
     <div className="grid content-start gap-4">
       <Panel title="Add" bare={bare}>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <Button variant="subtle" size="sm" onClick={addText} className="flex-col gap-1 !h-auto py-2.5">
             <Type className="h-4 w-4" /> Text
           </Button>
           <Button variant="subtle" size="sm" onClick={addShape} className="flex-col gap-1 !h-auto py-2.5">
             <Square className="h-4 w-4" /> Shape
-          </Button>
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={() => setForm({ asset: null, initialClass: null })}
-            className="flex-col gap-1 !h-auto py-2.5"
-          >
-            <ImagePlus className="h-4 w-4" /> Upload
           </Button>
         </div>
       </Panel>
@@ -437,7 +424,7 @@ export default function CreativeLayersPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setForm({ asset, initialClass: null })}
+                    onClick={() => onOpenAssetForm(asset, null)}
                     aria-label={`Edit class and notes for ${asset.filename || asset.kind}`}
                     title="Class and notes"
                     className={cn(
@@ -459,28 +446,13 @@ export default function CreativeLayersPanel({
             variant="ghost"
             size="sm"
             className="mt-2 w-full"
-            onClick={() => setForm({ asset: null, initialClass: activeShelf.uploadAs ?? null })}
+            onClick={() => onOpenAssetForm(null, activeShelf.uploadAs ?? null)}
           >
             <Plus className="h-3.5 w-3.5" /> Upload {activeShelf.label.toLowerCase()}
           </Button>
         )}
       </Panel>
 
-      <CreativeAssetForm
-        open={form !== null}
-        onClose={() => setForm(null)}
-        projectId={projectId}
-        asset={form?.asset ?? null}
-        initialClass={form?.initialClass ?? null}
-        onSaved={(asset) => {
-          onAssetSaved(asset);
-          onNotice(
-            form?.asset
-              ? `${asset.filename || "Asset"} filed as ${CREATIVE_ASSET_CLASSES[asset.assetClass as CreativeAssetClass]?.label ?? asset.assetClass}`
-              : `${asset.filename || "File"} uploaded as ${CREATIVE_ASSET_CLASSES[asset.assetClass as CreativeAssetClass]?.label ?? asset.assetClass}. Your assistant can use it now.`,
-          );
-        }}
-      />
     </div>
   );
 }
