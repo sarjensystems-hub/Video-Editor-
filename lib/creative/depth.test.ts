@@ -93,4 +93,11 @@ describe("deterministic 2.5D scene depth", () => {
     const source = readFileSync(resolve(process.cwd(), "remotion/CreativeComposition.tsx"), "utf8");
     expect(source).toContain('<AbsoluteFill style={{ background: evaluated.background, overflow: "clip", ...presentation }}>');
   });
+
+  it("positions boxes with translate so slow motion does not step a pixel at a time", () => {
+    const source = readFileSync(resolve(__dirname, "../../remotion/CreativeComposition.tsx"), "utf8");
+    expect(source).not.toMatch(/left: transform\.x/);
+    expect(source).not.toMatch(/top: -resolved\.scrollY/);
+    expect(source).toContain("translate: `${x}px ${y}px`");
+  });
 });

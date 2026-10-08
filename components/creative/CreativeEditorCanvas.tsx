@@ -48,6 +48,7 @@ export default function CreativeEditorCanvas({
   sceneId,
   timeMs,
   assets,
+  playing = false,
   selectedIds,
   onSelect,
   onTransaction,
@@ -57,6 +58,7 @@ export default function CreativeEditorCanvas({
   sceneId: string;
   timeMs: number;
   assets: CreativePreviewAssets;
+  playing?: boolean;
   selectedIds: string[];
   onSelect: (ids: string[]) => void;
   onTransaction: (transaction: CreativeTransaction) => void;
@@ -352,7 +354,7 @@ export default function CreativeEditorCanvas({
           }}
           className="absolute left-0 top-0 origin-top-left will-change-transform"
         >
-          <CreativeScenePreview document={doc} sceneId={scene.id} timeMs={timeMs} assets={assets} />
+          <CreativeScenePreview document={doc} sceneId={scene.id} timeMs={timeMs} assets={assets} playing={playing} />
 
           <div className="absolute inset-0">
             {scene.elements

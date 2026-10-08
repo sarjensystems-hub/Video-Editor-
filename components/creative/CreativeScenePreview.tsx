@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import type { CSSProperties } from "react";
 import {
   evaluateSceneAtTime,
@@ -134,6 +134,16 @@ function ImageLayer({ element, asset, crop }: { element: CreativeImageElement; a
   );
 }
 
+/**
+ * Whether the preview is playing. Video elements read it to decide between
+ * running on their own clock (playing) and being placed frame-exactly
+ * (paused or scrubbing).
+ */
+const PreviewPlayingContext = createContext(false);
+
+/** How far a playing video may drift from the timeline before it is re-seated. */
+const VIDEO_DRIFT_TOLERANCE_S = 0.25;
+
 function SyncedVideo({
   element,
   asset,
@@ -144,24 +154,52 @@ function SyncedVideo({
   sceneTimeMs: number;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
+  const playing = useContext(PreviewPlayingContext);
   const visibleStart = element.timing?.startMs ?? 0;
   const localMs = Math.max(0, sceneTimeMs - visibleStart);
   const sourceMs = resolveVideoSourceTimeMs(element, localMs);
+  // Freezes and speed ramps cannot be expressed as a play rate, so they are
+  // placed frame by frame even while playing - as the renderer does.
   const exactSeek = element.freezeAtSourceMs != null || Boolean(element.speedRamp);
+  const runsFree = playing && !exactSeek;
 
   useEffect(() => {
     const node = ref.current;
     if (!node || !asset?.url) return;
-    if (exactSeek) node.pause();
     const target = sourceMs / 1000;
-    if (Number.isFinite(target) && Math.abs(node.currentTime - target) > 0.02) {
+    if (!Number.isFinite(target)) return;
+    if (runsFree) {
+      // Seeking on every frame is what made playback stutter: let the video
+      // play and only pull it back when it has wandered.
+      if (Math.abs(node.currentTime - target) > VIDEO_DRIFT_TOLERANCE_S) {
+        try {
+          node.currentTime = target;
+        } catch {
+          // Metadata can still be loading; the next tick retries.
+        }
+      }
+      if (node.paused) void node.play().catch(() => undefined);
+      return;
+    }
+    if (!node.paused) node.pause();
+    if (Math.abs(node.currentTime - target) > 0.02) {
       try {
         node.currentTime = target;
       } catch {
         // Metadata can still be loading; the next time tick will retry.
       }
     }
-  }, [asset?.url, exactSeek, sourceMs]);
+  }, [asset?.url, runsFree, sourceMs]);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.playbackRate = runsFree ? Math.max(0.0625, Math.min(16, element.playbackRate ?? 1)) : 1;
+    node.muted = !runsFree || Boolean(element.muted);
+    node.volume = Math.max(0, Math.min(1, element.volume ?? 1));
+  }, [runsFree, element.playbackRate, element.muted, element.volume]);
+
+  useEffect(() => () => ref.current?.pause(), []);
 
   if (!asset?.url) return <Placeholder label={element.name || "Video"} />;
 
@@ -963,12 +1001,15 @@ export default function CreativeScenePreview({
   sceneId,
   timeMs,
   assets = {},
+  playing = false,
   className,
 }: {
   document: CreativeDocument;
   sceneId?: string;
   timeMs: number;
   assets?: CreativePreviewAssets;
+  /** Lets video run on its own clock with sound instead of being stepped frame by frame. */
+  playing?: boolean;
   className?: string;
 }) {
   const scene = useMemo(
@@ -999,6 +1040,7 @@ export default function CreativeScenePreview({
       data-creative-scene={scene.id}
       data-creative-time={Math.round(clampedTime)}
     >
+      <PreviewPlayingContext.Provider value={playing}>
       <HierarchyLayer css={cameraCss}>
       {evaluated.elements.map((item) => {
         const { transform } = item;
@@ -1066,6 +1108,7 @@ export default function CreativeScenePreview({
         );
       })}
       </HierarchyLayer>
+      </PreviewPlayingContext.Provider>
     </div>
   );
 }

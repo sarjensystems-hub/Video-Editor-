@@ -80,6 +80,20 @@ import type { EvaluatedElement } from "../lib/creative/evaluate";
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
+/**
+ * Places a box with the CSS `translate` property instead of `left`/`top`.
+ *
+ * Chrome snaps layout offsets to whole device pixels, so an element drifting
+ * 0.3px a frame through `left`/`top` holds still, then jumps a pixel - and
+ * the glyphs inside are re-rasterized at each jump. In the exported video
+ * that read as text vibrating. `translate` is a compositor transform: it
+ * moves by the exact sub-pixel amount every frame. It also composes before
+ * `transform`, so rotation and scale still pivot on the element's own anchor.
+ */
+function subpixelBox(x: number, y: number, width: number, height: number) {
+  return { left: 0, top: 0, translate: `${x}px ${y}px`, width, height } as const;
+}
+
 function transitionPresentation({
   document,
   entry,
@@ -401,10 +415,7 @@ function UiNode({
     <div
       style={{
         position: "absolute",
-        left: node.x,
-        top: node.y,
-        width: node.width,
-        height: node.height,
+        ...subpixelBox(node.x, node.y, node.width, node.height),
         opacity: node.opacity,
         transform: node.transform ?? undefined,
         transformOrigin: node.transformOrigin,
@@ -478,7 +489,7 @@ function UiVisual({
           overflow: "hidden",
         }}
       >
-        <div style={{ position: "absolute", left: 0, top: -resolved.scrollY, width: "100%", height: "100%" }}>
+        <div style={{ position: "absolute", left: 0, top: 0, translate: `0px ${-resolved.scrollY}px`, width: "100%", height: "100%" }}>
           {resolved.nodes.map((node) => (
             <UiNode key={node.id} node={node} assets={assets} />
           ))}
@@ -487,10 +498,12 @@ function UiVisual({
           <div
             style={{
               position: "absolute",
-              left: resolved.pointer.x - resolved.pointer.radius,
-              top: resolved.pointer.y - resolved.pointer.radius,
-              width: resolved.pointer.radius * 2,
-              height: resolved.pointer.radius * 2,
+              ...subpixelBox(
+                resolved.pointer.x - resolved.pointer.radius,
+                resolved.pointer.y - resolved.pointer.radius,
+                resolved.pointer.radius * 2,
+                resolved.pointer.radius * 2,
+              ),
               borderRadius: "50%",
               background: resolved.pointer.color,
               opacity: resolved.pointer.pressed ? 0.9 : 0.45,
@@ -810,10 +823,7 @@ function CompositeChildLayer({
     <div
       style={{
         position: "absolute",
-        left: transform.x,
-        top: transform.y,
-        width: transform.width,
-        height: transform.height,
+        ...subpixelBox(transform.x, transform.y, transform.width, transform.height),
         opacity: transform.opacity,
         transformOrigin: `${transform.anchorX * 100}% ${transform.anchorY * 100}%`,
         ...elementTransformCss,
@@ -1179,10 +1189,7 @@ function SceneRenderer({
             key={element.id}
             style={{
               position: "absolute",
-              left: transform.x,
-              top: transform.y,
-              width: transform.width,
-              height: transform.height,
+              ...subpixelBox(transform.x, transform.y, transform.width, transform.height),
               opacity: transform.opacity,
               transformOrigin: `${transform.anchorX * 100}% ${transform.anchorY * 100}%`,
               ...elementTransformCss,

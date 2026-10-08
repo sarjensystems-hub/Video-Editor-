@@ -41,7 +41,10 @@ import {
 } from "@/lib/creative/editor-state";
 import type { CreativeTransaction } from "@/lib/creative/transactions";
 import { CREATIVE_ASSET_CLASSES, type CreativeAssetClass } from "@/lib/creative/asset-class";
+import { getCreativeDurationMs } from "@/lib/creative/evaluate";
+import { getCreativeSceneTimeline } from "@/lib/creative/remotion";
 import CreativeAssetForm from "./CreativeAssetForm";
+import CreativePreviewAudio from "./CreativePreviewAudio";
 import CreativeAutomationPanel from "./CreativeAutomationPanel";
 import CreativeEditorCanvas from "./CreativeEditorCanvas";
 import CreativeLayersPanel, { type EditorAsset } from "./CreativeLayersPanel";
@@ -114,6 +117,19 @@ export default function CreativeEditor({
     [assets],
   );
 
+  // Play runs the whole film, not the selected scene: the clock is film time,
+  // and the editor follows it from scene to scene the way the render will.
+  const timeline = useMemo(() => getCreativeSceneTimeline(state.document), [state.document]);
+  const filmDurationMs = useMemo(() => getCreativeDurationMs(state.document), [state.document]);
+  const sceneStartMs = timeline.find((entry) => entry.sceneId === scene.id)?.startMs ?? 0;
+  const filmTimeMs = sceneStartMs + timeMs;
+  const timelineRef = useRef(timeline);
+  timelineRef.current = timeline;
+  const sceneIdRef = useRef(scene.id);
+  sceneIdRef.current = scene.id;
+
+  const assetUrls = useMemo(() => Object.fromEntries(assets.map((asset) => [asset.id, asset.url])), [assets]);
+
   useEffect(() => {
     if (!playing) {
       startedAt.current = null;
@@ -122,18 +138,30 @@ export default function CreativeEditor({
     let frame = 0;
     const tick = (now: number) => {
       if (startedAt.current == null) startedAt.current = now;
+      const entries = timelineRef.current;
+      const last = entries[entries.length - 1];
+      const filmEnd = last ? last.endMs : 0;
       const next = startedFrom.current + (now - startedAt.current);
-      if (next >= scene.durationMs) {
-        setTimeMs(Math.max(0, scene.durationMs - 1));
+      if (!last || next >= filmEnd) {
+        if (last && sceneIdRef.current !== last.sceneId) {
+          setState((current) => setEditorSelection(current, { sceneId: last.sceneId, elementIds: [] }));
+        }
+        setTimeMs(Math.max(0, (last?.durationMs ?? 1) - 1));
         setPlaying(false);
         return;
       }
-      setTimeMs(next);
+      // Through a transition the incoming scene takes over as it starts.
+      const entry = [...entries].reverse().find((item) => item.startMs <= next) ?? entries[0];
+      if (entry.sceneId !== sceneIdRef.current) {
+        sceneIdRef.current = entry.sceneId;
+        setState((current) => setEditorSelection(current, { sceneId: entry.sceneId, elementIds: [] }));
+      }
+      setTimeMs(Math.min(entry.durationMs - 1, next - entry.startMs));
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, scene.durationMs]);
+  }, [playing]);
 
   useEffect(() => {
     if (timeMs >= scene.durationMs) setTimeMs(Math.max(0, scene.durationMs - 1));
@@ -202,8 +230,14 @@ export default function CreativeEditor({
 
   const togglePlay = () => {
     if (!playing) {
-      if (timeMs >= scene.durationMs - 1) setTimeMs(0);
-      startedFrom.current = timeMs >= scene.durationMs - 1 ? 0 : timeMs;
+      // At the very end, play starts the film over from the first scene.
+      if (filmTimeMs >= filmDurationMs - 2) {
+        startedFrom.current = 0;
+        setState((current) => setEditorSelection(current, { sceneId: state.document.scenes[0].id, elementIds: [] }));
+        setTimeMs(0);
+      } else {
+        startedFrom.current = filmTimeMs;
+      }
       startedAt.current = null;
     }
     setPlaying((value) => !value);
@@ -211,7 +245,6 @@ export default function CreativeEditor({
 
   const scrub = useCallback((next: number) => {
     setPlaying(false);
-    startedFrom.current = next;
     setTimeMs(next);
   }, []);
 
@@ -422,6 +455,7 @@ export default function CreativeEditor({
             sceneId={scene.id}
             timeMs={timeMs}
             assets={previewAssets}
+            playing={playing}
             selectedIds={state.selection.elementIds}
             onSelect={select}
             onTransaction={transact}
@@ -436,6 +470,13 @@ export default function CreativeEditor({
         )}
       </div>
 
+      <CreativePreviewAudio
+        document={state.document}
+        assetUrls={assetUrls}
+        filmTimeMs={filmTimeMs}
+        playing={playing}
+      />
+
       {/* ── Transport ── */}
       <div className="flex h-12 shrink-0 items-center gap-2 border-t border-edge bg-panel px-2 sm:px-3">
         <IconButton label={playing ? "Pause" : "Play"} size="sm" variant="ghost" className="!border-transparent" onClick={togglePlay}>
@@ -449,6 +490,7 @@ export default function CreativeEditor({
           onClick={() => {
             setPlaying(false);
             startedFrom.current = 0;
+            setState((current) => setEditorSelection(current, { sceneId: current.document.scenes[0].id, elementIds: [] }));
             setTimeMs(0);
           }}
         >
@@ -464,7 +506,7 @@ export default function CreativeEditor({
           className="scrubber min-w-0 flex-1"
         />
         <span className="shrink-0 text-[11px] font-semibold tabular-nums text-ink-muted">
-          {formatTime(timeMs)} / {formatTime(scene.durationMs)}
+          {formatTime(filmTimeMs)} / {formatTime(filmDurationMs)}
         </span>
       </div>
 
