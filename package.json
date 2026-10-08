@@ -6,7 +6,7 @@
     "dev": "next dev",
     "prebuild": "vitest run && tsc --noEmit",
     "build": "next build",
-    "postbuild": "node scripts/create-creative-render-snapshot.mjs",
+    "postbuild": "node scripts/create-creative-render-snapshot.mjs && node scripts/check-tigris.mjs",
     "start": "next start",
     "test": "vitest run"
   },
