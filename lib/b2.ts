@@ -107,9 +107,9 @@ export async function deleteObject(path: string): Promise<boolean> {
   return response.ok;
 }
 
-/** Object keys under a prefix, with their last-modified times. */
-export async function listObjects(prefix: string): Promise<Array<{ key: string; lastModifiedMs: number }>> {
-  const out: Array<{ key: string; lastModifiedMs: number }> = [];
+/** Object keys under a prefix, with their sizes and last-modified times. */
+export async function listObjects(prefix: string): Promise<Array<{ key: string; size: number; lastModifiedMs: number }>> {
+  const out: Array<{ key: string; size: number; lastModifiedMs: number }> = [];
   let token: string | null = null;
   do {
     const query = new URLSearchParams({ "list-type": "2", prefix });
@@ -120,7 +120,8 @@ export async function listObjects(prefix: string): Promise<Array<{ key: string; 
     for (const block of xml.match(/<Contents>[\s\S]*?<\/Contents>/g) ?? []) {
       const key = decodeXml(block.match(/<Key>([^<]*)<\/Key>/)?.[1] ?? "");
       const modified = Date.parse(block.match(/<LastModified>([^<]*)<\/LastModified>/)?.[1] ?? "");
-      if (key) out.push({ key, lastModifiedMs: Number.isFinite(modified) ? modified : 0 });
+      const size = Number(block.match(/<Size>(\d+)<\/Size>/)?.[1] ?? 0);
+      if (key) out.push({ key, size, lastModifiedMs: Number.isFinite(modified) ? modified : 0 });
     }
     token = /<IsTruncated>true<\/IsTruncated>/.test(xml)
       ? decodeXml(xml.match(/<NextContinuationToken>([^<]*)<\/NextContinuationToken>/)?.[1] ?? "") || null

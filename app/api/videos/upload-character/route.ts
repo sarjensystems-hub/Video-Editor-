@@ -6,11 +6,16 @@
  * quality reduction — and returns { url }. Used by the Videos workspace to
  * collect up to MAX_VIDEO_CHARACTERS reference images before submitting a
  * generation job.
+ *
+ * DELETE { url } removes a reference the person took back out of the form
+ * before generating, unless a generation already used it.
  */
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { uploadAnyBytes } from "@/lib/storage";
-import { userStoragePath } from "@/lib/storage-paths";
+import { isUserStoragePath, storagePathFromMediaUrl, userStoragePath } from "@/lib/storage-paths";
+import { deleteObject } from "@/lib/b2";
+import { urlsStillReferenced } from "@/lib/creative/project-delete";
 
 export const maxDuration = 30;
 
@@ -46,4 +51,20 @@ export async function POST(request: Request) {
   const url = await uploadAnyBytes(bytes, path, file.type);
   if (!url) return NextResponse.json({ error: "Upload failed (see server logs)" }, { status: 500 });
   return NextResponse.json({ url });
+}
+
+export async function DELETE(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = (await request.json().catch(() => null)) as { url?: unknown } | null;
+  const url = typeof body?.url === "string" ? body.url : "";
+  const path = storagePathFromMediaUrl(url);
+  if (!isUserStoragePath(user.id, "characters", path)) {
+    return NextResponse.json({ error: "Not one of your reference images" }, { status: 400 });
+  }
+  const stillUsed = await urlsStillReferenced(supabase, user.id, [url]);
+  if (stillUsed.has(url)) return NextResponse.json({ removed: false });
+  return NextResponse.json({ removed: await deleteObject(path) });
 }

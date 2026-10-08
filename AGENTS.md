@@ -72,6 +72,11 @@
   inline as WebP (`lib/mcp-server/inline-images.ts`).
 - Anything that deletes a project deletes its files too, through
   `deleteUserFiles`, keeping any file a surviving row still references.
+- The Media page (`/dashboard/media`, `lib/media-library.ts`) lists the user's
+  storage folder itself, not the database, so it also shows files nothing uses.
+  Deleting there removes the describing rows first, then the file, and refuses
+  any file a project timeline still places. Any new delete button must remove
+  the stored file as well, never just the row.
 
 ## No workspaces
 

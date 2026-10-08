@@ -85,11 +85,19 @@ export default function VideosWorkspace({ initialJobs }: { initialJobs: VideoGen
   }
 
   function removeCharacter(id: string) {
-    setCharacters((prev) => {
-      const target = prev.find((c) => c.id === id);
-      if (target) URL.revokeObjectURL(target.previewUrl);
-      return prev.filter((c) => c.id !== id);
-    });
+    const target = characters.find((c) => c.id === id);
+    if (target) {
+      URL.revokeObjectURL(target.previewUrl);
+      // Already uploaded: take the file back out of storage too.
+      if (target.url) {
+        void fetch("/api/videos/upload-character", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: target.url }),
+        }).catch(() => undefined);
+      }
+    }
+    setCharacters((prev) => prev.filter((c) => c.id !== id));
   }
 
   function renameCharacter(id: string, name: string) {
