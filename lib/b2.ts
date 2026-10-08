@@ -59,12 +59,28 @@ async function failure(response: Response, action: string): Promise<Error> {
   return new Error(`B2 ${action} failed (${response.status}): ${message}`);
 }
 
-export async function putObject(path: string, body: Uint8Array | ArrayBuffer | string, contentType: string): Promise<void> {
-  const response = await config().client.fetch(objectUrl(path), {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: body as BodyInit,
+/**
+ * Signs a request that carries a body, then sends the original bytes with an
+ * explicit length.
+ *
+ * aws4fetch's own fetch re-wraps the body in a Request, which Node then
+ * streams with chunked encoding - and B2 refuses any upload that does not
+ * declare Content-Length (411). Signing and sending separately keeps the
+ * length known. The payload is signed as UNSIGNED-PAYLOAD, so the bytes are
+ * never hashed in memory.
+ */
+async function sendWithBody(url: string, method: string, body: Uint8Array | string, headers: Record<string, string>): Promise<Response> {
+  const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
+  const signed = await config().client.sign(url, {
+    method,
+    headers: { ...headers, "Content-Length": String(bytes.byteLength) },
   });
+  return fetch(signed.url, { method, headers: signed.headers, body: bytes as BodyInit });
+}
+
+export async function putObject(path: string, body: Uint8Array | ArrayBuffer | string, contentType: string): Promise<void> {
+  const bytes = body instanceof ArrayBuffer ? new Uint8Array(body) : body;
+  const response = await sendWithBody(objectUrl(path), "PUT", bytes, { "Content-Type": contentType });
   if (!response.ok) throw await failure(response, `upload of ${path}`);
 }
 
@@ -124,10 +140,7 @@ export async function presignGet(path: string, expiresSeconds: number): Promise<
 // ── Multipart: how a browser sends a file of any size straight to B2 ──
 
 export async function createMultipartUpload(path: string, contentType: string): Promise<string> {
-  const response = await config().client.fetch(objectUrl(path, "?uploads"), {
-    method: "POST",
-    headers: { "Content-Type": contentType },
-  });
+  const response = await sendWithBody(objectUrl(path, "?uploads"), "POST", "", { "Content-Type": contentType });
   if (!response.ok) throw await failure(response, "starting the upload");
   const uploadId = (await response.text()).match(/<UploadId>([^<]*)<\/UploadId>/)?.[1];
   if (!uploadId) throw new Error("B2 did not return an upload id");
@@ -180,10 +193,8 @@ export async function completeMultipartUpload(path: string, uploadId: string, ex
     "<CompleteMultipartUpload>" +
     parts.map((part) => `<Part><PartNumber>${part.partNumber}</PartNumber><ETag>${escapeXml(part.etag)}</ETag></Part>`).join("") +
     "</CompleteMultipartUpload>";
-  const response = await config().client.fetch(objectUrl(path, `?uploadId=${encodeURIComponent(uploadId)}`), {
-    method: "POST",
-    headers: { "Content-Type": "application/xml" },
-    body,
+  const response = await sendWithBody(objectUrl(path, `?uploadId=${encodeURIComponent(uploadId)}`), "POST", body, {
+    "Content-Type": "application/xml",
   });
   const text = await response.text();
   // S3 can answer 200 with an <Error> body when completion fails late.
