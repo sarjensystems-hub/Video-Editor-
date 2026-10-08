@@ -15,9 +15,22 @@ function sendPart(url: string, blob: Blob, onBytes: (sent: number) => void, sign
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
-    xhr.upload.onprogress = (event) => onBytes(event.loaded);
+    let sentAny = false;
+    xhr.upload.onprogress = (event) => {
+      if (event.loaded > 0) sentAny = true;
+      onBytes(event.loaded);
+    };
     xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Storage refused a part (${xhr.status})`)));
-    xhr.onerror = () => reject(new Error("The connection dropped while uploading"));
+    // A request the browser refuses before it starts - no bytes sent, no
+    // status - is storage turning the site away (CORS), not the network.
+    xhr.onerror = () =>
+      reject(
+        new Error(
+          sentAny
+            ? "The connection dropped while uploading"
+            : "Storage refused the upload from this site. Open Settings → API keys → Storage uploads and enable uploads once.",
+        ),
+      );
     const abort = () => xhr.abort();
     signal.addEventListener("abort", abort, { once: true });
     xhr.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"));
