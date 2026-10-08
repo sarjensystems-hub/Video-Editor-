@@ -38,3 +38,20 @@ export async function enableStorageUploads(
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
+
+/** What the bucket currently allows, and how a real upload from this page fares. */
+export async function checkStorageUploads(): Promise<
+  | { ok: true; rules: import("@/lib/b2-diagnose").StorageCorsRule[]; probe: import("@/lib/b2-diagnose").UploadProbe }
+  | { ok: false; error: string }
+> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Sign in first." };
+  try {
+    const { readBucketCorsRules, probeBrowserUpload } = await import("@/lib/b2-diagnose");
+    const [rules, probe] = await Promise.all([readBucketCorsRules(), probeBrowserUpload(user.id, await requestOrigin())]);
+    return { ok: true, rules, probe };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
