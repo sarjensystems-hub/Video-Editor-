@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSiteId } from "@/lib/active-site";
 import { importBasicSvg, importCreativeDocumentJson } from "@/lib/creative/import";
 import { createRuntimeCreativeProject } from "@/lib/creative/project-runtime";
 import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
@@ -24,7 +23,7 @@ async function handlePOST(request: Request) {
   if (!imported.ok) return NextResponse.json({ error: imported.error, warnings: imported.warnings }, { status: 422 });
   try {
     const project = await createRuntimeCreativeProject(
-      { supabase, userId: user.id, siteId: await getActiveSiteId() },
+      { supabase, userId: user.id },
       title,
       imported.document,
     );

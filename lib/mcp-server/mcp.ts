@@ -190,7 +190,6 @@ const CREATIVE_MCP_TOOLS = [
           description: "How much to send back. summary (default) gives the revision, the duration and each scene's resolved start and end on the overlap-aware timeline. outline adds each scene's element ids, types, names, resolved timings and group membership, without animation tracks or transforms. document returns the whole CreativeDocument, which you already authored and which costs thousands of tokens per call. none returns only the identifiers.",
         },
         title: { type: "string" },
-        site_id: { type: "string", description: "Optional owned Studio site/workspace ID." },
         width: { type: "integer", minimum: 1, maximum: CREATIVE_CANVAS_MAX_DIMENSION, description: "Optional canvas width in pixels." },
         height: { type: "integer", minimum: 1, maximum: CREATIVE_CANVAS_MAX_DIMENSION, description: "Optional canvas height in pixels." },
         fps: { type: "integer", minimum: 1, maximum: 120, description: "Optional canvas frame rate." },
@@ -214,7 +213,6 @@ const CREATIVE_MCP_TOOLS = [
           description: "How much to send back. summary (default) gives the revision, the duration and each scene's resolved start and end on the overlap-aware timeline. outline adds each scene's element ids, types, names, resolved timings and group membership, without animation tracks or transforms. document returns the whole CreativeDocument, which you already authored and which costs thousands of tokens per call. none returns only the identifiers.",
         },
         title: { type: "string", description: "Optional project title; overrides the document title." },
-        site_id: { type: "string", description: "Optional owned Studio site/workspace ID." },
         document: {
           type: "object",
           additionalProperties: true,
@@ -398,7 +396,6 @@ const CREATIVE_MCP_TOOLS = [
       additionalProperties: false,
       properties: {
         project_id: { type: "string" },
-        site_id: { type: "string" },
         kind: { type: "string", enum: ["image", "video", "audio", "font", "other"] },
         source: { type: "string" },
         url: { type: "string" },
@@ -422,7 +419,6 @@ const CREATIVE_MCP_TOOLS = [
       additionalProperties: false,
       properties: {
         project_id: { type: "string" },
-        site_id: { type: "string" },
         prompt: { type: "string" },
         format: { type: "string", enum: ["landscape", "square", "portrait"], default: "portrait" },
         label: { type: "string" },
@@ -445,7 +441,6 @@ const CREATIVE_MCP_TOOLS = [
       additionalProperties: false,
       properties: {
         project_id: { type: "string" },
-        site_id: { type: "string" },
         generation_id: { type: "string" },
         label: { type: "string" },
       },
@@ -460,7 +455,6 @@ const CREATIVE_MCP_TOOLS = [
       additionalProperties: false,
       properties: {
         project_id: { type: "string" },
-        site_id: { type: "string" },
         text: { type: "string", description: "The exact performance prompt and transcript to synthesize. May include an audio profile, scene, director\'s notes and inline audio tags. If it carries direction, name the words to be spoken (quote them, or introduce them with \"say the following line\") - unmarked direction over a short line makes the model read the whole prompt as instruction and return no audio." },
         transcript: { type: "string", description: "Optional spoken words only, used for duration-aligned marker estimates when text also contains direction. If omitted, inline [audio tags] are stripped conservatively." },
         language: { type: "string", default: "auto", description: "Optional BCP-47 language label stored as metadata. Gemini detects the spoken language from the text automatically." },
@@ -485,7 +479,6 @@ const CREATIVE_MCP_TOOLS = [
       additionalProperties: false,
       properties: {
         project_id: { type: "string" },
-        site_id: { type: "string" },
         prompt: { type: "string", description: "Genre, instrumentation, tempo and mood." },
         label: { type: "string" },
       },
@@ -498,7 +491,7 @@ const CREATIVE_MCP_TOOLS = [
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
-        project_id: { type: "string" }, site_id: { type: "string" },
+        project_id: { type: "string" },
         effect_id: { type: "string", enum: ["ui-click", "ui-pop", "whoosh", "success", "error", "impact"] },
         label: { type: "string" },
       },
@@ -518,7 +511,6 @@ const CREATIVE_MCP_TOOLS = [
           description: "How much to send back. summary (default) gives the revision, the duration and each scene's resolved start and end on the overlap-aware timeline. outline adds each scene's element ids, types, names, resolved timings and group membership, without animation tracks or transforms. document returns the whole CreativeDocument, which you already authored and which costs thousands of tokens per call. none returns only the identifiers.",
         },
         title: { type: "string" },
-        site_id: { type: "string" },
         svg: { type: "string", maxLength: 5242880 },
       },
       required: ["svg"],
@@ -676,11 +668,6 @@ export const VIDEO_MCP_TOOLS = [
         generate_audio: { type: "boolean", default: true },
         provider: { type: "string", enum: ["openrouter"], default: "openrouter" },
         model: { type: "string", description: "Optional provider model override." },
-        site_id: {
-          type: "string",
-          description:
-            "Optional Studio site/workspace ID owned by the authenticated user. If omitted, the user's default site or oldest available site is used.",
-        },
         idempotency_key: {
           type: "string",
           description: "Stable unique key for this intended generation; retries must reuse the same key.",

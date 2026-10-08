@@ -4,22 +4,24 @@ Run these files **in this order** in the Supabase SQL editor
 (Dashboard → SQL Editor → New query → paste → Run). Order matters: later files
 reference tables the earlier ones create.
 
-1. `sites.sql` — workspaces. Everything else hangs off a site.
-2. `add_creative_studio.sql` — the core four tables: projects, revisions,
+1. `add_creative_studio.sql` — the core four tables: projects, revisions,
    assets and render jobs.
-3. `add_creative_folders.sql` — folders in the Creative Studio file browser.
-4. `add_video_generations.sql` — generated-video jobs.
-5. `add_video_generations_audio.sql` — adds the audio flag to the above.
-6. `add_mcp_oauth.sql` — the three tables that let ChatGPT and Claude sign in.
-7. `add_mcp_refresh_tokens.sql` — keeps those connections alive past an hour.
-8. `add_video_generations_mcp_oauth.sql` — lets video jobs be started over MCP.
-9. `add_storage_buckets.sql` — historical: files now live in Backblaze B2
+2. `add_creative_folders.sql` — folders in the Creative Studio file browser.
+3. `add_video_generations.sql` — generated-video jobs.
+4. `add_video_generations_audio.sql` — adds the audio flag to the above.
+5. `add_mcp_oauth.sql` — the three tables that let ChatGPT and Claude sign in.
+6. `add_mcp_refresh_tokens.sql` — keeps those connections alive past an hour.
+7. `add_video_generations_mcp_oauth.sql` — lets video jobs be started over MCP.
+8. `add_storage_buckets.sql` — historical: files now live in Backblaze B2
    (see `lib/b2.ts`), so these Supabase Storage buckets are no longer used and
    this file can be skipped on a new project.
-10. `add_user_api_keys.sql` — each account's own OpenRouter key, encrypted at
+9. `add_user_api_keys.sql` — each account's own OpenRouter key, encrypted at
    rest. Without this table nobody can save a key, and nothing can generate.
-11. `add_creative_asset_class.sql` — what each asset is for (narration, music,
+10. `add_creative_asset_class.sql` — what each asset is for (narration, music,
    logo, product shot, ...), so the assistant knows how to use an upload.
+11. `drop_workspaces.sql` — only for a database created before workspaces were
+   removed: drops the `sites` table and every `site_id` column. A new project
+   never had them, so it can skip this.
 
 Every file is safe to re-run: they all use `if not exists`, so a partial run can
 simply be repeated from the top.

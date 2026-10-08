@@ -159,7 +159,6 @@ return { summary, operations };
 
 export interface CreativeDocumentImportInput {
   title?: string;
-  siteId?: string;
   document: CreativeDocument;
 }
 
@@ -202,7 +201,6 @@ export function parseCreativeDocumentImportInput(value: unknown): CreativeDocume
 
   return {
     title,
-    siteId: typeof input.site_id === "string" && input.site_id.trim() ? input.site_id.trim() : undefined,
     document: candidate as unknown as CreativeDocument,
   };
 }
@@ -307,26 +305,8 @@ export function parseCreativeAssetProbeInput(value: unknown): CreativeAssetProbe
   return { assetId, timesMs };
 }
 
-async function resolveSiteId(context: McpUserContext, requested?: unknown): Promise<string | null> {
-  if (typeof requested === "string" && requested.trim()) {
-    const id = requested.trim();
-    const { data } = await context.supabase.from("sites").select("id").eq("id", id).eq("user_id", context.user.id).maybeSingle();
-    if (!data) throw new Error("site_id is not owned by the authenticated user");
-    return id;
-  }
-  const { data } = await context.supabase
-    .from("sites")
-    .select("id")
-    .eq("user_id", context.user.id)
-    .order("is_default", { ascending: false })
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  return data?.id ? String(data.id) : null;
-}
-
-async function runtimeContext(context: McpUserContext, requestedSiteId?: unknown): Promise<CreativeRuntimeContext> {
-  return { supabase: context.supabase, userId: context.user.id, siteId: await resolveSiteId(context, requestedSiteId) };
+async function runtimeContext(context: McpUserContext): Promise<CreativeRuntimeContext> {
+  return { supabase: context.supabase, userId: context.user.id };
 }
 
 /**
@@ -411,7 +391,6 @@ async function renderProject(context: McpUserContext, request: CreativeProjectRe
     .from("creative_render_jobs")
     .insert({
       user_id: context.user.id,
-      site_id: runtime.siteId,
       project_id: projectId,
       revision_id: project.currentRevisionId,
       status: "rendering",
@@ -565,7 +544,7 @@ export async function handleCreativeMcpTool(
   }
 
   if (name === "studio_create_creative_project") {
-    const runtime = await runtimeContext(context, input.site_id);
+    const runtime = await runtimeContext(context);
     const title = typeof input.title === "string" ? input.title : undefined;
     const project = await createRuntimeCreativeProject(runtime, title, undefined, parseCreativeProjectCanvasInput(input));
     return {
@@ -593,7 +572,7 @@ export async function handleCreativeMcpTool(
     const documentSha256 = assertDocumentSha256(input.document, input.document_sha256);
 
     const parsed = parseCreativeDocumentImportInput(input);
-    const runtime = await runtimeContext(context, parsed.siteId);
+    const runtime = await runtimeContext(context);
     const project = await createRuntimeCreativeProject(runtime, parsed.title, parsed.document);
     return {
       project_id: project.id,
@@ -1280,7 +1259,7 @@ export async function handleCreativeMcpTool(
   }
 
   if (name === "studio_generate_image_asset") {
-    const runtime = await runtimeContext(context, input.site_id);
+    const runtime = await runtimeContext(context);
     const projectId = parseProjectId(input);
     const prompt = requiredString(input, "prompt");
     const referenceImages = Array.isArray(input.reference_images)
@@ -1301,7 +1280,7 @@ export async function handleCreativeMcpTool(
   }
 
   if (name === "studio_generate_speech_asset") {
-    const runtime = await runtimeContext(context, input.site_id);
+    const runtime = await runtimeContext(context);
     const projectId = parseProjectId(input);
     const { generateCreativeSpeechAsset } = await import("./workers");
     const asset = await withCredits(context, "creative_speech", CREDIT_COSTS.creative_speech, () =>
@@ -1323,7 +1302,7 @@ export async function handleCreativeMcpTool(
   }
 
   if (name === "studio_generate_music_asset") {
-    const runtime = await runtimeContext(context, input.site_id);
+    const runtime = await runtimeContext(context);
     const projectId = parseProjectId(input);
     const { generateCreativeMusicAsset } = await import("./workers");
     const asset = await withCredits(context, "creative_music", CREDIT_COSTS.creative_music, () =>
@@ -1337,7 +1316,7 @@ export async function handleCreativeMcpTool(
   }
 
   if (name === "studio_add_sfx_asset") {
-    const runtime = await runtimeContext(context, input.site_id);
+    const runtime = await runtimeContext(context);
     const projectId = parseProjectId(input);
     const effectId = requiredString(input, "effect_id");
     const { CREATIVE_SFX_LIBRARY } = await import("./sfx-library");
@@ -1348,7 +1327,7 @@ export async function handleCreativeMcpTool(
   }
 
   if (name === "studio_promote_video_asset") {
-    const runtime = await runtimeContext(context, input.site_id);
+    const runtime = await runtimeContext(context);
     const projectId = parseProjectId(input);
     const generationId = requiredString(input, "generation_id");
     const { promoteCreativeVideoAsset } = await import("./workers");
@@ -1361,7 +1340,7 @@ export async function handleCreativeMcpTool(
   }
 
   if (name === "studio_import_svg") {
-    const runtime = await runtimeContext(context, input.site_id);
+    const runtime = await runtimeContext(context);
     const svg = requiredString(input, "svg");
     const title = typeof input.title === "string" && input.title.trim() ? input.title.trim() : "Imported SVG";
     const { importBasicSvg } = await import("./import");
@@ -1436,7 +1415,7 @@ export async function handleCreativeMcpTool(
   // dispatches exactly the tools it advertises.
   if (name !== "studio_add_asset") throw new Error(`Unknown creative tool: ${String(name)}`);
 
-  const runtime = await runtimeContext(context, input.site_id);
+  const runtime = await runtimeContext(context);
   const url = typeof input.url === "string" ? input.url.trim() : "";
   const kind = typeof input.kind === "string" ? input.kind.trim() : "";
   if (!url || !kind) throw new Error("url and kind are required");

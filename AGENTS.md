@@ -70,8 +70,15 @@
   refuse any path outside the caller's own folder.
 - Preview frames are never stored. They are rendered in memory and returned
   inline as WebP (`lib/mcp-server/inline-images.ts`).
-- Anything that deletes a project or workspace deletes its files too, through
+- Anything that deletes a project deletes its files too, through
   `deleteUserFiles`, keeping any file a surviving row still references.
+
+## No workspaces
+
+- There are no workspaces. Projects, assets, folders, renders and videos
+  belong to their owner and are listed by `user_id` alone. The old "sites"
+  system scoped them by a per-browser cookie, which hid work from anyone on a
+  different browser; do not bring back a per-browser scope.
 
 ## Row-level security
 

@@ -14,7 +14,6 @@ import { resolveAssetClass } from "./asset-class";
 export interface CreativeRuntimeContext {
   supabase: SupabaseClient;
   userId: string;
-  siteId?: string | null;
 }
 
 export interface CreativeRuntimeProject {
@@ -188,7 +187,6 @@ export async function createRuntimeCreativeProject(
   const { error: projectError } = await context.supabase.from("creative_projects").insert({
     id: projectId,
     user_id: context.userId,
-    site_id: context.siteId ?? null,
     title: document.title,
     status: "draft",
     document,
@@ -374,8 +372,7 @@ export async function registerRuntimeCreativeAsset(
     .from("creative_assets")
     .insert({
       user_id: context.userId,
-      site_id: context.siteId ?? null,
-      project_id: input.projectId ?? null,
+        project_id: input.projectId ?? null,
       kind: input.kind,
       asset_class: resolveAssetClass(input.assetClass, input.kind),
       source: input.source,

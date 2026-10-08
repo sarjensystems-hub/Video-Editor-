@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSiteId } from "@/lib/active-site";
 import { fetchAIResponseWithImages } from "@/lib/openrouter";
 import { uploadAnyBytes } from "@/lib/storage";
 import { parseDecompositionPlan, pixelCropFromNormalized } from "@/lib/creative/decompose";
@@ -23,7 +22,7 @@ async function handlePOST(request: Request) {
   const projectId = typeof body?.project_id === "string" ? body.project_id.trim() : "";
   const assetId = typeof body?.asset_id === "string" ? body.asset_id.trim() : "";
   if (!projectId || !assetId) return NextResponse.json({ error: "project_id and asset_id are required" }, { status: 400 });
-  const context = { supabase, userId: user.id, siteId: await getActiveSiteId() };
+  const context = { supabase, userId: user.id };
   if (!await getRuntimeCreativeProject(context, projectId)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
   const { data: source, error } = await supabase

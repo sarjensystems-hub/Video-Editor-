@@ -79,7 +79,7 @@ export async function promoteCreativeVideoAsset(
   if (!project) throw new Error("Project not found");
   const { data, error } = await context.supabase
     .from("video_generations")
-    .select("id, user_id, site_id, status, video_url, model, mode, duration_seconds, resolution, aspect_ratio, prompt")
+    .select("id, user_id, status, video_url, model, mode, duration_seconds, resolution, aspect_ratio, prompt")
     .eq("id", input.generationId)
     .eq("user_id", context.userId)
     .maybeSingle();

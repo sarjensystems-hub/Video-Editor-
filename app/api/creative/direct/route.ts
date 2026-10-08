@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSiteId } from "@/lib/active-site";
 import { planCreativeTransaction } from "@/lib/creative/director";
 import { applyRuntimeCreativeTransaction, getRuntimeCreativeProject } from "@/lib/creative/project-runtime";
 import { InsufficientCreditsError, withCredits } from "@/lib/creative/metering";
@@ -18,7 +17,7 @@ async function handlePOST(request: Request) {
   const projectId = typeof body?.project_id === "string" ? body.project_id.trim() : "";
   const intent = typeof body?.intent === "string" ? body.intent.trim() : "";
   if (!projectId || !intent) return NextResponse.json({ error: "project_id and intent are required" }, { status: 400 });
-  const context = { supabase, userId: user.id, siteId: await getActiveSiteId() };
+  const context = { supabase, userId: user.id };
   try {
     const project = await getRuntimeCreativeProject(context, projectId);
     if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });

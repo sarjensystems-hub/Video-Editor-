@@ -3,11 +3,9 @@
 import ConnectedApps from "@/components/ConnectedApps";
 
 import { useState, useEffect, useTransition } from "react";
-import { Moon, Sun, User, Check, Mail, Globe, Trash2, AlertTriangle, KeyRound } from "lucide-react";
+import { Moon, Sun, User, Check, Mail, KeyRound } from "lucide-react";
 import { setTheme } from "@/app/actions/theme";
 import { sendPasswordReset } from "@/app/actions/auth";
-import { deleteSite } from "@/app/actions/sites";
-import { useRouter } from "next/navigation";
 import { cn } from "@/components/ui/cn";
 import ApiKeysCard from "@/components/settings/ApiKeysCard";
 import type { OpenRouterKeyStatus } from "@/lib/openrouter-key";
@@ -16,22 +14,16 @@ const TABS = [
   { id: "keys",       label: "API keys",   icon: KeyRound },
   { id: "appearance", label: "Appearance", icon: Sun },
   { id: "account",    label: "Account",    icon: User },
-  { id: "workspaces", label: "Workspaces", icon: Globe },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
 
-type Site = { id: string; name: string; url: string | null };
-
 interface Props {
   email: string;
-  sites: Site[];
-  activeSiteId: string | null;
   keyStatus: OpenRouterKeyStatus;
 }
 
-export default function SettingsClient({ email, sites, activeSiteId, keyStatus }: Props) {
-  const router = useRouter();
+export default function SettingsClient({ email, keyStatus }: Props) {
   // An account with no key of its own cannot generate anything, so that is the
   // tab worth opening on until one is saved.
   const [activeTab, setActiveTab] = useState<TabId>(keyStatus.configured ? "appearance" : "keys");
@@ -39,9 +31,6 @@ export default function SettingsClient({ email, sites, activeSiteId, keyStatus }
   const [isPending, startTransition] = useTransition();
   const [pwEmailSent, setPwEmailSent] = useState(false);
   const [pwSending, setPwSending] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
@@ -53,19 +42,6 @@ export default function SettingsClient({ email, sites, activeSiteId, keyStatus }
     startTransition(() => {
       setTheme(dark ? "dark" : "light");
     });
-  }
-
-  async function handleDeleteSite(siteId: string) {
-    setDeletingId(siteId);
-    setDeleteError(null);
-    const result = await deleteSite(siteId);
-    setDeletingId(null);
-    setConfirmDeleteId(null);
-    if (result.error) {
-      setDeleteError(result.error);
-    } else {
-      router.refresh();
-    }
   }
 
   async function handleSendPasswordReset() {
@@ -149,69 +125,6 @@ export default function SettingsClient({ email, sites, activeSiteId, keyStatus }
           </div>
         )}
 
-        {activeTab === "workspaces" && (
-          <Card title="Workspaces" hint="Deleting a workspace also deletes the videos generated in it. Projects are kept and simply lose the workspace.">
-            {deleteError && (
-              <div className="mb-4 flex items-center gap-2 rounded-[10px] bg-danger-wash px-3.5 py-3">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-danger" />
-                <p className="text-sm text-danger">{deleteError}</p>
-              </div>
-            )}
-            {sites.length === 0 ? (
-              <p className="text-sm text-ink-faint">No workspaces yet.</p>
-            ) : (
-              <ul className="grid gap-2">
-                {sites.map((site) => (
-                  <li
-                    key={site.id}
-                    className="flex items-center gap-3 rounded-xl border border-edge bg-canvas-subtle px-3.5 py-3"
-                  >
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-500/10 text-fire">
-                      <Globe className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 truncate text-sm font-medium text-ink">
-                        {site.name}
-                        {site.id === activeSiteId && (
-                          <span className="rounded-full bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fire">
-                            Active
-                          </span>
-                        )}
-                      </p>
-                      {site.url && <p className="truncate text-xs text-ink-faint">{site.url}</p>}
-                    </div>
-                    {confirmDeleteId === site.id ? (
-                      <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          onClick={() => handleDeleteSite(site.id)}
-                          disabled={deletingId === site.id}
-                          className="rounded-lg px-2 py-1 text-xs font-bold text-danger transition-colors hover:bg-danger-wash disabled:opacity-50"
-                        >
-                          {deletingId === site.id ? "Deleting…" : "Confirm"}
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteId(null)}
-                          disabled={deletingId === site.id}
-                          className="rounded-lg px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-canvas-muted"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => { setConfirmDeleteId(site.id); setDeleteError(null); }}
-                        className="shrink-0 rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-danger-wash hover:text-danger"
-                        title="Delete workspace"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        )}
       </div>
     </div>
   );

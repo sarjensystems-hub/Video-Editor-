@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSiteId } from "@/lib/active-site";
 import { generateCreativeImageAsset, normalizeCreativeImageFormat } from "@/lib/creative/workers";
 import { InsufficientCreditsError, withCredits } from "@/lib/creative/metering";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
@@ -17,11 +16,10 @@ async function handlePOST(request: Request) {
   const projectId = typeof body?.project_id === "string" ? body.project_id.trim() : "";
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
   if (!projectId || !prompt) return NextResponse.json({ error: "project_id and prompt are required" }, { status: 400 });
-  const siteId = await getActiveSiteId();
   try {
     const asset = await withCredits({ supabase, user }, "creative_image", CREDIT_COSTS.creative_image, () =>
       generateCreativeImageAsset(
-        { supabase, userId: user.id, siteId },
+        { supabase, userId: user.id },
         {
           projectId,
           prompt,

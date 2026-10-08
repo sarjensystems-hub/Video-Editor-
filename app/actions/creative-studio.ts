@@ -3,7 +3,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSiteId, workspaceScopeFilter } from "@/lib/active-site";
 import { createEmptyCreativeDocument } from "@/lib/creative/defaults";
 import { CREATIVE_CANVAS_FORMATS, resolveCanvasFormat } from "@/lib/creative/canvas-formats";
 import type { CreativeDocument } from "@/lib/creative/schema";
@@ -32,7 +31,6 @@ export async function createCreativeProject(title = "Untitled creative", format?
   const auth = await authenticatedClient();
   if (!auth) redirect("/login");
   const { supabase, user } = auth;
-  const siteId = await getActiveSiteId();
   const projectId = crypto.randomUUID();
   const { width, height } = CREATIVE_CANVAS_FORMATS[resolveCanvasFormat(format)];
   const document = createEmptyCreativeDocument({
@@ -48,7 +46,6 @@ export async function createCreativeProject(title = "Untitled creative", format?
   const { error: projectError } = await supabase.from("creative_projects").insert({
     id: projectId,
     user_id: user.id,
-    site_id: siteId,
     title: document.title,
     status: "draft",
     document,
@@ -215,13 +212,11 @@ export async function listCreativeProjects(folder?: string) {
   const auth = await authenticatedClient();
   if (!auth) return [];
   const { supabase, user } = auth;
-  const scope = workspaceScopeFilter(await getActiveSiteId());
   const query = supabase
     .from("creative_projects")
     .select("id, title, status, created_at, updated_at, current_revision_id, folder_id")
     .eq("user_id", user.id)
     .order("updated_at", { ascending: false });
-  if (scope) query.or(scope);
   if (folder === "unfiled") query.is("folder_id", null);
   else if (folder) query.eq("folder_id", folder);
   const { data } = await query;
@@ -284,13 +279,11 @@ export async function listCreativeFolders() {
   const auth = await authenticatedClient();
   if (!auth) return [];
   const { supabase, user } = auth;
-  const scope = workspaceScopeFilter(await getActiveSiteId());
   const query = supabase
     .from("creative_folders")
     .select("id, name, created_at")
     .eq("user_id", user.id)
     .order("name", { ascending: true });
-  if (scope) query.or(scope);
   const { data } = await query;
   return data ?? [];
 }
@@ -301,11 +294,10 @@ export async function createCreativeFolder(name: string): Promise<CreativeAction
   const { supabase, user } = auth;
   const trimmed = name.trim().slice(0, 80);
   if (!trimmed) return { ok: false, error: "Folder name cannot be empty" };
-  const siteId = await getActiveSiteId();
 
   const { data, error } = await supabase
     .from("creative_folders")
-    .insert({ user_id: user.id, site_id: siteId, name: trimmed })
+    .insert({ user_id: user.id, name: trimmed })
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? "Could not create folder" };

@@ -10,7 +10,6 @@ import type {
 export interface UserVideoJob {
   id: string;
   userId: string;
-  siteId: string;
   provider: VideoProviderName;
   providerJobId: string | null;
   model: string;
@@ -33,7 +32,6 @@ export interface UserVideoJob {
 
 export interface ReserveUserVideoJobInput {
   userId: string;
-  siteId: string;
   provider: VideoProviderName;
   model: string;
   mode: VideoMode;
@@ -47,7 +45,6 @@ export interface ReserveUserVideoJobInput {
 }
 
 export interface UserVideoRepository {
-  resolveSite(userId: string, requestedSiteId?: string): Promise<string | null>;
   findByIdempotency(userId: string, key: string): Promise<UserVideoJob | null>;
   reserve(input: ReserveUserVideoJobInput): Promise<{ job: UserVideoJob; created: boolean }>;
   deleteReservation(userId: string, id: string): Promise<void>;
@@ -114,16 +111,10 @@ export class UserVideoOrchestrator {
     const existing = await this.repo.findByIdempotency(userId, request.idempotencyKey);
     if (existing) return existing;
 
-    const siteId = await this.repo.resolveSite(userId, request.siteId);
-    if (!siteId) {
-      throw new Error("No Studio site is available. Create a site in Studio first.");
-    }
-
     const provider = this.resolveProvider(request.provider);
     const model = provider.resolveModel(request);
     const reservation = await this.repo.reserve({
       userId,
-      siteId,
       provider: request.provider,
       model,
       mode: request.mode,
@@ -237,7 +228,6 @@ export function serializeUserVideoJob(job: UserVideoJob) {
     error: job.error,
     cost_usd: job.costUsd,
     credits_charged: job.creditsCharged,
-    site_id: job.siteId,
     created_at: job.createdAt,
     updated_at: job.updatedAt,
   };

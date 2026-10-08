@@ -39,15 +39,6 @@ describe("parseGenerateVideoRequest", () => {
     ]);
   });
 
-  it("accepts an optional Studio site id", () => {
-    const result = parseGenerateVideoRequest({
-      prompt: "Show the car",
-      idempotency_key: "idem-site",
-      site_id: "11111111-1111-4111-8111-111111111111",
-    });
-    expect(result.siteId).toBe("11111111-1111-4111-8111-111111111111");
-  });
-
   it("rejects avatar mode until a provider exists", () => {
     expect(() =>
       parseGenerateVideoRequest({ prompt: "talk", idempotency_key: "idem", mode: "avatar" }),

@@ -21,7 +21,6 @@ function mapRow(row: Record<string, unknown>): UserVideoJob {
   return {
     id: String(row.id),
     userId: String(row.user_id),
-    siteId: String(row.site_id),
     provider: (row.provider || "openrouter") as VideoProviderName,
     providerJobId: typeof row.openrouter_job_id === "string" ? row.openrouter_job_id : null,
     model: typeof row.model === "string" ? row.model : "bytedance/seedance-2.0-fast",
@@ -58,39 +57,6 @@ class SupabaseUserVideoRepository implements UserVideoRepository {
     this.supabase = supabase;
   }
 
-  async resolveSite(userId: string, requestedSiteId?: string): Promise<string | null> {
-    if (requestedSiteId) {
-      const { data, error } = await this.supabase
-        .from("sites")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("id", requestedSiteId)
-        .maybeSingle();
-      if (error) throw new Error(`Could not verify site: ${error.message}`);
-      if (!data) throw new Error("site_id does not belong to the authenticated Studio user.");
-      return String(data.id);
-    }
-
-    const { data: defaults, error: defaultError } = await this.supabase
-      .from("sites")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("is_default", true)
-      .order("created_at", { ascending: true })
-      .limit(1);
-    if (defaultError) throw new Error(`Could not resolve default site: ${defaultError.message}`);
-    if (defaults?.[0]?.id) return String(defaults[0].id);
-
-    const { data: oldest, error: oldestError } = await this.supabase
-      .from("sites")
-      .select("id")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(1);
-    if (oldestError) throw new Error(`Could not resolve site: ${oldestError.message}`);
-    return oldest?.[0]?.id ? String(oldest[0].id) : null;
-  }
-
   async findByIdempotency(userId: string, key: string): Promise<UserVideoJob | null> {
     const { data, error } = await this.supabase
       .from("video_generations")
@@ -107,7 +73,6 @@ class SupabaseUserVideoRepository implements UserVideoRepository {
       .from("video_generations")
       .insert({
         user_id: input.userId,
-        site_id: input.siteId,
         openrouter_job_id: null,
         status: "pending",
         prompt: input.prompt,
@@ -159,7 +124,6 @@ class SupabaseUserVideoRepository implements UserVideoRepository {
 
   async update(userId: string, id: string, patch: Partial<UserVideoJob>): Promise<UserVideoJob> {
     const dbPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (patch.siteId !== undefined) dbPatch.site_id = patch.siteId;
     if (patch.provider !== undefined) dbPatch.provider = patch.provider;
     if (patch.providerJobId !== undefined) dbPatch.openrouter_job_id = patch.providerJobId;
     if (patch.model !== undefined) dbPatch.model = patch.model;

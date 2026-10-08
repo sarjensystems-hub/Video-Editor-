@@ -177,7 +177,6 @@ describe("Studio media MCP", () => {
     expect(importTool.inputSchema.properties.document.type).toBe("object");
     expect(importTool.inputSchema.required).toEqual(["document"]);
     expect(importTool.inputSchema.properties.title.type).toBe("string");
-    expect(importTool.inputSchema.properties.site_id.type).toBe("string");
   });
 
   it("advertises exact millisecond frame preview rendering", () => {
@@ -216,12 +215,6 @@ describe("Studio media MCP", () => {
     expect(create.inputSchema.properties.width.type).toBe("integer");
     expect(create.inputSchema.properties.height.type).toBe("integer");
     expect(create.inputSchema.properties.fps.type).toBe("integer");
-  });
-
-  it("advertises optional Studio site selection", () => {
-    const generate = VIDEO_MCP_TOOLS[0] as any;
-    expect(generate.inputSchema.properties.site_id.type).toBe("string");
-    expect(generate.inputSchema.required).not.toContain("site_id");
   });
 
   it("advertises draft and timeline-window creative renders", () => {

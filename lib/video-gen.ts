@@ -38,7 +38,6 @@ export interface VideoCharacterRef {
 export interface VideoGenerationRow {
   id:                 string;
   user_id:            string;
-  site_id:            string;
   openrouter_job_id:  string;
   status:             VideoJobState;
   prompt:             string;

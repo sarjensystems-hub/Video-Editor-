@@ -6,7 +6,6 @@
 create table if not exists public.creative_folders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  site_id uuid references public.sites(id) on delete set null,
   name text not null default 'Untitled folder'
     check (char_length(trim(name)) > 0),
   created_at timestamptz not null default now(),

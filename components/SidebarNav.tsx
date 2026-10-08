@@ -2,15 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
 import {
   LayoutDashboard,
   Clapperboard,
   Settings,
-  ChevronsUpDown,
-  Plus,
-  Check,
-  X,
   PanelLeftClose,
   PanelLeftOpen,
   Video,
@@ -18,14 +13,6 @@ import {
 import BrandLogo from "@/components/BrandLogo";
 import LogoutButton from "@/components/LogoutButton";
 import { cn } from "@/components/ui/cn";
-import { switchSite, createSite } from "@/app/actions/sites";
-
-type Site = {
-  id: string;
-  name: string;
-  url: string | null;
-  is_default: boolean;
-};
 
 /**
  * Nav is grouped rather than flat. Four items do not need sections for
@@ -50,54 +37,17 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: R
 
 type Props = {
   email: string;
-  sites: Site[];
-  activeSiteId: string | null;
   collapsed: boolean;
   onToggleCollapse: () => void;
 };
 
 export default function SidebarNav({
-  email, sites, activeSiteId,
+  email,
   collapsed, onToggleCollapse,
 }: Props) {
   const pathname = usePathname();
-  const [siteMenuOpen, setSiteMenuOpen]   = useState(false);
-  const [addingSite, setAddingSite]       = useState(false);
-  const [newSiteName, setNewSiteName]     = useState("");
-  const [newSiteUrl, setNewSiteUrl]       = useState("");
-  const [saving, setSaving]               = useState(false);
-  const [siteError, setSiteError]         = useState<string | null>(null);
-
-  const activeSite = sites.find((s) => s.id === activeSiteId) ?? sites[0];
-
   const isActive = (href: string, exact = false) =>
     exact ? pathname === href : pathname.startsWith(href);
-
-  async function handleSwitchSite(id: string) {
-    setSiteMenuOpen(false);
-    await switchSite(id);
-    window.location.href = window.location.pathname;
-  }
-
-  async function handleAddSite() {
-    if (!newSiteName.trim()) return;
-    setSaving(true);
-    setSiteError(null);
-    const fd = new FormData();
-    fd.append("name", newSiteName);
-    fd.append("url", newSiteUrl);
-    const result = await createSite(fd);
-    setSaving(false);
-    if ("error" in result) {
-      setSiteError(result.error ?? "Something went wrong");
-    } else {
-      setAddingSite(false);
-      setNewSiteName("");
-      setNewSiteUrl("");
-      setSiteError(null);
-      window.location.href = window.location.pathname;
-    }
-  }
 
   return (
     <aside
@@ -145,101 +95,6 @@ export default function SidebarNav({
           </button>
         </div>
       )}
-
-      {/* ── Workspace switcher ──
-          A named object with its own initial, not a globe icon: with several
-          workspaces the initial is what tells them apart at a glance. */}
-      <div className={cn("relative", collapsed ? "px-2 pb-2" : "px-3 pb-3")}>
-        <button
-          onClick={() => setSiteMenuOpen(!siteMenuOpen)}
-          aria-expanded={siteMenuOpen}
-          title={collapsed ? activeSite?.name ?? "Workspace" : undefined}
-          className={cn(
-            "flex w-full items-center rounded-xl border border-wall-edge bg-wall-hover text-left transition-colors hover:bg-wall-active",
-            collapsed ? "justify-center p-2" : "gap-2.5 px-2.5 py-2",
-          )}
-        >
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 text-[12px] font-bold uppercase text-white">
-            {activeSite?.name?.[0] ?? "+"}
-          </span>
-          {!collapsed && (
-            <>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-semibold text-chalk">
-                  {activeSite?.name ?? "No workspace"}
-                </span>
-                <span className="block truncate text-[10px] uppercase tracking-[0.1em] text-chalk-dim">
-                  {activeSite ? "Workspace" : "Add your first"}
-                </span>
-              </span>
-              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-chalk-dim" />
-            </>
-          )}
-        </button>
-
-        {siteMenuOpen && !collapsed && (
-          <div className="absolute left-3 right-3 top-full z-30 mt-1.5 overflow-hidden rounded-xl border border-edge bg-panel shadow-lg">
-            {sites.map((site) => (
-              <button
-                key={site.id}
-                onClick={() => handleSwitchSite(site.id)}
-                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-canvas-subtle"
-              >
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-brand-500/15 text-[11px] font-bold uppercase text-fire">
-                  {site.name[0]}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{site.name}</span>
-                {site.id === activeSiteId && <Check className="h-3.5 w-3.5 shrink-0 text-fire" />}
-              </button>
-            ))}
-
-            {!addingSite ? (
-              <button
-                onClick={() => setAddingSite(true)}
-                className="flex w-full items-center gap-2.5 border-t border-edge px-3 py-2.5 text-left text-[13px] text-ink-muted transition-colors hover:bg-canvas-subtle hover:text-ink"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                New workspace
-              </button>
-            ) : (
-              <div className="space-y-2 border-t border-edge p-3">
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Workspace name"
-                  value={newSiteName}
-                  onChange={(e) => setNewSiteName(e.target.value)}
-                  className="input py-1.5 text-[13px]"
-                />
-                <input
-                  type="text"
-                  placeholder="URL (optional)"
-                  value={newSiteUrl}
-                  onChange={(e) => setNewSiteUrl(e.target.value)}
-                  className="input py-1.5 text-[13px]"
-                />
-                {siteError && <p className="px-0.5 text-[11px] text-danger">{siteError}</p>}
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleAddSite}
-                    disabled={saving || !newSiteName.trim()}
-                    className="btn flex-1 py-1.5 text-[13px]"
-                  >
-                    {saving ? "Saving…" : "Add"}
-                  </button>
-                  <button
-                    onClick={() => { setAddingSite(false); setNewSiteName(""); setNewSiteUrl(""); setSiteError(null); }}
-                    aria-label="Cancel"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-canvas-muted"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* ── Main nav ── */}
       <nav className="flex-1 overflow-y-auto px-2.5 pb-4">

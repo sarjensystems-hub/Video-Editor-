@@ -2,19 +2,15 @@
 
 import { useState } from "react";
 import SidebarNav from "@/components/SidebarNav";
-import { MobileTabBar, MobileTopBar, type Workspace } from "@/components/MobileNav";
+import { MobileTabBar, MobileTopBar } from "@/components/MobileNav";
 import { cn } from "@/components/ui/cn";
 
 export default function DashboardShell({
   children,
   email,
-  sites,
-  activeSiteId,
 }: {
   children: React.ReactNode;
   email: string;
-  sites: Workspace[];
-  activeSiteId: string | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -22,16 +18,10 @@ export default function DashboardShell({
     <div className="min-h-[100dvh] bg-canvas">
       {/* Phones get a top bar and thumb-reachable tabs rather than a drawer:
           a hidden hamburger menu costs two taps to reach anything. */}
-      <MobileTopBar
-        email={email}
-        workspaces={sites}
-        activeWorkspaceId={activeSiteId}
-      />
+      <MobileTopBar email={email} />
 
       <SidebarNav
         email={email}
-        sites={sites}
-        activeSiteId={activeSiteId}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(!collapsed)}
       />

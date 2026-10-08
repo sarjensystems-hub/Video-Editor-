@@ -5,7 +5,6 @@
 create table if not exists public.creative_projects (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  site_id uuid references public.sites(id) on delete set null,
   title text not null default 'Untitled creative',
   status text not null default 'draft'
     check (status in ('draft', 'ready', 'rendering', 'archived')),
@@ -31,7 +30,6 @@ create table if not exists public.creative_project_revisions (
 create table if not exists public.creative_assets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  site_id uuid references public.sites(id) on delete set null,
   project_id uuid references public.creative_projects(id) on delete set null,
   kind text not null default 'other'
     check (kind in ('image', 'video', 'audio', 'font', 'other')),
@@ -52,7 +50,6 @@ create table if not exists public.creative_assets (
 create table if not exists public.creative_render_jobs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  site_id uuid references public.sites(id) on delete set null,
   project_id uuid not null references public.creative_projects(id) on delete cascade,
   revision_id uuid references public.creative_project_revisions(id) on delete set null,
   status text not null default 'queued'
@@ -72,10 +69,6 @@ create table if not exists public.creative_render_jobs (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
--- Existing Creative Studio installs may predate render-job site ownership.
-alter table public.creative_render_jobs
-  add column if not exists site_id uuid references public.sites(id) on delete set null;
 
 -- Vestigial billing columns. This deployment charges nothing, so both stay at
 -- their defaults forever and the refund branch that reads them never fires.
@@ -103,8 +96,6 @@ end $$;
 
 create index if not exists creative_projects_user_updated_idx
   on public.creative_projects (user_id, updated_at desc);
-create index if not exists creative_projects_site_idx
-  on public.creative_projects (site_id, updated_at desc);
 create index if not exists creative_revisions_project_sequence_idx
   on public.creative_project_revisions (project_id, sequence desc);
 create index if not exists creative_assets_user_created_idx

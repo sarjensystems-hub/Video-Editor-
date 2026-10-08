@@ -52,13 +52,11 @@ describe("creative persistence contract", () => {
     expect(sql).toContain("output_url");
   });
 
-  it("persists site ownership on creative render jobs", () => {
-    const sql = readFileSync(resolve(process.cwd(), "supabase/add_creative_studio.sql"), "utf8").toLowerCase();
-    const renderJobsSection = sql.slice(
-      sql.indexOf("create table if not exists public.creative_render_jobs"),
-      sql.indexOf("-- circular relationship is added after revisions exist."),
-    );
-
-    expect(renderJobsSection).toContain("site_id uuid references public.sites(id) on delete set null");
+  it("scopes nothing to a workspace: workspaces were removed", () => {
+    for (const file of ["add_creative_studio.sql", "add_creative_folders.sql", "add_video_generations.sql"]) {
+      const sql = readFileSync(resolve(process.cwd(), "supabase", file), "utf8").toLowerCase();
+      expect(sql).not.toContain("site_id");
+      expect(sql).not.toContain("public.sites");
+    }
   });
 });

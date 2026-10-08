@@ -118,7 +118,7 @@ export async function deleteUserFiles(
   if (paths.size === 0) return { removed: 0, skipped, notRemoved: 0 };
 
   let removed = 0;
-  // A handful of files at a time: a workspace can hold hundreds.
+  // A handful of files at a time: a project can hold hundreds.
   const queue = [...paths];
   await Promise.all(
     Array.from({ length: Math.min(6, queue.length) }, async () => {

@@ -32,7 +32,6 @@ export interface GenerateVideoRequest {
   provider: VideoProviderName;
   model?: string;
   idempotencyKey: string;
-  siteId?: string;
 }
 
 export interface ProviderSubmission {
@@ -148,7 +147,6 @@ export function parseGenerateVideoRequest(input: unknown): GenerateVideoRequest 
   }
   const references = refsRaw.map(parseReference);
   const model = optionalString(r.model, "model");
-  const siteId = optionalString(r.site_id ?? r.siteId, "site_id");
 
   return {
     prompt,
@@ -161,6 +159,5 @@ export function parseGenerateVideoRequest(input: unknown): GenerateVideoRequest 
     generateAudio: audioRaw,
     references,
     model,
-    siteId,
   };
 }

@@ -19,7 +19,6 @@
  */
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSiteId } from "@/lib/active-site";
 import {
   VIDEO_ASPECT_RATIOS,
   VIDEO_RESOLUTIONS,
@@ -40,9 +39,6 @@ async function handlePOST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const siteId = await getActiveSiteId();
-  if (!siteId) return NextResponse.json({ error: "No site selected" }, { status: 400 });
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== "object") {
@@ -105,7 +101,6 @@ async function handlePOST(request: Request) {
     .from("video_generations")
     .insert({
       user_id:            user.id,
-      site_id:            siteId,
       openrouter_job_id:  submission.id,
       status:             submission.status ?? "pending",
       prompt,

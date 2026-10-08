@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSiteId } from "@/lib/active-site";
 import { promoteCreativeVideoAsset } from "@/lib/creative/workers";
 import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
 
@@ -16,7 +15,7 @@ async function handlePOST(request: Request) {
   if (!projectId || !generationId) return NextResponse.json({ error: "project_id and generation_id are required" }, { status: 400 });
   try {
     const asset = await promoteCreativeVideoAsset(
-      { supabase, userId: user.id, siteId: await getActiveSiteId() },
+      { supabase, userId: user.id },
       { projectId, generationId, label: typeof body?.label === "string" ? body.label : undefined },
     );
     return NextResponse.json({ asset }, { status: 201 });

@@ -26,7 +26,6 @@ function job(overrides: Partial<UserVideoJob> = {}): UserVideoJob {
   return {
     id: "11111111-1111-4111-8111-111111111111",
     userId: "user-1",
-    siteId: "site-1",
     provider: "openrouter",
     providerJobId: null,
     model: "bytedance/seedance-2.0-fast",
@@ -62,11 +61,10 @@ function harness(options: {
   let refunded = false;
 
   const repo: UserVideoRepository = {
-    async resolveSite() { calls.push("resolve-site"); return "site-1"; },
     async findByIdempotency() { calls.push("find-idem"); return options.existing ?? null; },
     async reserve(input) {
       calls.push("reserve");
-      current = job({ userId: input.userId, siteId: input.siteId, mcpIdempotencyKey: input.idempotencyKey });
+      current = job({ userId: input.userId, mcpIdempotencyKey: input.idempotencyKey });
       return { job: current, created: true };
     },
     async deleteReservation() { calls.push("delete-reservation"); },

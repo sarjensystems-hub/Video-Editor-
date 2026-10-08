@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSiteId } from "@/lib/active-site";
 import { completeMultipartUpload, headObject } from "@/lib/b2";
 import { mediaUrl } from "@/lib/storage";
 import { planUploadParts } from "@/lib/creative/asset-upload-plan";
@@ -74,7 +73,6 @@ export async function POST(request: Request) {
     .from("creative_assets")
     .insert({
       user_id: user.id,
-      site_id: await getActiveSiteId(),
       project_id: projectId,
       kind,
       asset_class: assetClass,

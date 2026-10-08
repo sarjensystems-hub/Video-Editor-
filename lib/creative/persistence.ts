@@ -14,7 +14,6 @@ export interface CreativeRevisionSnapshot {
 export interface CreativeAssetRecord {
   id: string;
   userId: string;
-  siteId: string | null;
   projectId: string | null;
   kind: CreativeAssetKind;
   source: string;
