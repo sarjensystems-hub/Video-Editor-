@@ -119,6 +119,32 @@ async function runStyle(style, base) {
     working &&= listing.ok;
 
     // CORS as the browser sees it: a preflight for a PUT from each app address.
+    // If the bucket refuses, apply the one rule browser uploads need and look again.
+    const preflightOk = async (origin) => {
+      const preflight = await fetch(signedPut.url, {
+        method: "OPTIONS",
+        headers: { Origin: origin, "Access-Control-Request-Method": "PUT", "Access-Control-Request-Headers": "content-type" },
+      });
+      const allowOrigin = preflight.headers.get("access-control-allow-origin");
+      return preflight.ok && (allowOrigin === origin || allowOrigin === "*");
+    };
+    if (!(await preflightOk(ORIGINS[0]))) {
+      const rule =
+        "<CORSConfiguration><CORSRule>" +
+        ORIGINS.map((origin) => `<AllowedOrigin>${origin}</AllowedOrigin>`).join("") +
+        "<AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedMethod>HEAD</AllowedMethod>" +
+        "<AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds>" +
+        "</CORSRule></CORSConfiguration>";
+      const bytes = new TextEncoder().encode(rule);
+      const { createHash } = await import("node:crypto");
+      const md5 = createHash("md5").update(bytes).digest("base64");
+      const signedCors = await client.sign(`${base}?cors`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/xml", "Content-MD5": md5, "Content-Length": String(bytes.byteLength) },
+      });
+      const setCors = await fetch(signedCors.url, { method: "PUT", headers: signedCors.headers, body: bytes });
+      log(`${style}: apply browser-upload rule (CORS)`, setCors.ok, setCors.ok ? "" : await messageOf(setCors));
+    }
     for (const origin of ORIGINS) {
       const preflight = await fetch(signedPut.url, {
         method: "OPTIONS",
