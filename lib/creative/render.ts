@@ -10,6 +10,8 @@ import {
   type CreativeRemotionAssetMap,
 } from "./remotion";
 import { withFileBackedRemotionConfig } from "./remotion-sandbox-transport";
+import { localizeSandboxMedia, type PreviewCopyStore } from "./sandbox-media";
+import { sandboxDownloadUrl } from "./preview-copies";
 import type { CreativeDocument } from "./schema";
 import { validateCreativeDocument } from "./validate";
 
@@ -20,6 +22,8 @@ export interface CreativeRenderRequest {
   outputKey: string;
   options?: CreativeRenderWindowOptions;
   onProgress?: (progress: number, phase: string) => Promise<void> | void;
+  /** Lets a draft render make and record preview copies of large videos. */
+  previews?: PreviewCopyStore;
 }
 
 export interface CreativeRenderResult {
@@ -53,6 +57,7 @@ export interface CreativeFrameRenderRequest {
   document: CreativeDocument;
   assets: CreativeRemotionAssetMap;
   timeMs: number;
+  previews?: PreviewCopyStore;
 }
 
 /**
@@ -85,6 +90,8 @@ export interface CreativeFramesRenderRequest {
   timesMs: number[];
   /** Also composite the frames into one deterministic sheet. */
   contactSheet?: boolean;
+  /** Makes and records preview copies of large videos the frames need. */
+  previews?: PreviewCopyStore;
 }
 
 export interface CreativeContactSheetResult {
@@ -293,6 +300,18 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
     assertValidDocument(request.document);
     const resolvedOptions = resolveCreativeRenderOptions(request.document, request.options);
     const sandbox = await restoreCreativeRendererSandbox();
+    // A draft is for judging timing, so it reads the same small preview
+    // copies as frame previews; the final render always reads originals.
+    const assets =
+      request.options?.quality === "draft"
+        ? await localizeSandboxMedia({
+            sandbox,
+            assets: request.assets,
+            options: { usePreviews: true, canMakePreviews: true },
+            downloadUrl: sandboxDownloadUrl,
+            previews: request.previews,
+          }).catch(() => request.assets)
+        : request.assets;
     let captured: { cmdId: string } | null = null;
     const detachedSandbox = new Proxy(sandbox as unknown as object, {
       get(target, property, receiver) {
@@ -319,7 +338,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
       await renderMediaOnVercel({
         sandbox: detachedSandbox,
         compositionId: CREATIVE_REMOTION_COMPOSITION_ID,
-        inputProps: { document: request.document, assets: request.assets },
+        inputProps: { document: request.document, assets },
         codec: "h264",
         outputFile,
         ...(resolvedOptions.frameRange ? { frameRange: resolvedOptions.frameRange } : {}),
@@ -467,6 +486,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
       document: request.document,
       assets: request.assets,
       timesMs: [request.timeMs],
+      previews: request.previews,
     });
     return result.frames[0];
   }
@@ -490,6 +510,16 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
 
     const sandbox = await restoreCreativeRendererSandbox();
     try {
+      // Each still below is a separate renderer process, and each would
+      // download every video it shows in full. Copy them in once instead.
+      const assets = await localizeSandboxMedia({
+        sandbox,
+        assets: request.assets,
+        options: { usePreviews: true, canMakePreviews: true },
+        downloadUrl: sandboxDownloadUrl,
+        previews: request.previews,
+      }).catch(() => request.assets);
+
       // Each still is its own detached process in the sandbox (a fresh
       // headless Chromium per call, exactly like the MP4 path's parallel
       // frame workers), so a batch of stills is embarrassingly parallel too.
@@ -504,7 +534,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
             compositionId: CREATIVE_REMOTION_COMPOSITION_ID,
             inputProps: {
               document: request.document,
-              assets: request.assets,
+              assets,
             },
             frame,
             imageFormat: "png",

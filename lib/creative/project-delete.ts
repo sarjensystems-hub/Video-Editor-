@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { deleteUserFiles } from "../storage";
-import { getCreativeDocumentAssetIds } from "./remotion";
+import { assetPreviewUrl, getCreativeDocumentAssetIds } from "./remotion";
 import type { CreativeDocument } from "./schema";
 
 /**
@@ -43,7 +43,7 @@ export async function deleteCreativeProjectWithFiles(
 
   const [renders, assets, otherProjects] = await Promise.all([
     supabase.from("creative_render_jobs").select("output_url").eq("project_id", projectId).eq("user_id", userId),
-    supabase.from("creative_assets").select("id, url").eq("project_id", projectId).eq("user_id", userId),
+    supabase.from("creative_assets").select("id, url, metadata").eq("project_id", projectId).eq("user_id", userId),
     supabase.from("creative_projects").select("document").eq("user_id", userId).neq("id", projectId),
   ]);
   for (const result of [renders, assets, otherProjects]) {
@@ -74,7 +74,12 @@ export async function deleteCreativeProjectWithFiles(
 
   const candidates = [
     ...new Set(
-      [...(renders.data ?? []).map((row) => row.output_url), ...purged.map((asset) => asset.url)]
+      [
+        ...(renders.data ?? []).map((row) => row.output_url),
+        ...purged.map((asset) => asset.url),
+        // A large video's preview copy goes with it.
+        ...purged.map((asset) => assetPreviewUrl(asset.metadata)),
+      ]
         .filter((url): url is string => typeof url === "string" && url.length > 0),
     ),
   ];

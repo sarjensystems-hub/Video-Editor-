@@ -68,6 +68,11 @@
 - Every file lives under `<userId>/<kind>/…`, built only by
   `lib/storage-paths.ts`; a guard test fails on a hand-built path, and deletes
   refuse any path outside the caller's own folder.
+- Storage downloads are capped (the free plan allows 1 GB a day), so renders
+  must not re-read media per frame. `lib/creative/sandbox-media.ts` copies a
+  render's media into the sandbox once, and previews and draft renders read a
+  large video's small stored preview copy (`metadata.preview_url`, made on
+  first use). The final MP4 always reads originals.
 - Preview frames are never stored. They are rendered in memory and returned
   inline as WebP (`lib/mcp-server/inline-images.ts`).
 - Anything that deletes a project deletes its files too, through

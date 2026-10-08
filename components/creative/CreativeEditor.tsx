@@ -128,7 +128,12 @@ export default function CreativeEditor({
   const sceneIdRef = useRef(scene.id);
   sceneIdRef.current = scene.id;
 
-  const assetUrls = useMemo(() => Object.fromEntries(assets.map((asset) => [asset.id, asset.url])), [assets]);
+  // Playback reads a large video's small preview copy when it has one: the
+  // original can be hundreds of megabytes, and storage downloads are capped.
+  const assetUrls = useMemo(
+    () => Object.fromEntries(assets.map((asset) => [asset.id, asset.previewUrl ?? asset.url])),
+    [assets],
+  );
 
   useEffect(() => {
     if (!playing) {

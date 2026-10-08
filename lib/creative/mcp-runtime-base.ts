@@ -6,8 +6,10 @@ import { parseCreativeOperationInput } from "./operation-contract";
 import {
   getCreativeDocumentAssetIds,
   getCreativeInputAssetMap,
+  assetPreviewUrl,
   type CreativeRemotionAssetMap,
 } from "./remotion";
+import { previewCopyStore } from "./preview-copies";
 import { RENDER_JOB_STALE_MESSAGE, canClaimRenderJobPoll, claimRenderJobPoll, isRenderJobStale, shouldRetryDetachedRender, updateClaimedRenderJob } from "./render-job";
 import { resolveCreativeFrameAtTime } from "./frame-time";
 import { extractSceneDocument, findSceneExportWindow } from "./scene-export";
@@ -315,22 +317,38 @@ async function runtimeContext(context: McpUserContext): Promise<CreativeRuntimeC
  * Preview and final rendering share this so a previewed frame is composed
  * from the same bytes the MP4 render will use.
  */
+function assetMapInput(row: { id: string; url: string; mime_type?: string | null; kind?: string | null; size_bytes?: number | null; metadata?: unknown }) {
+  return {
+    id: row.id,
+    url: row.url,
+    mimeType: row.mime_type ?? null,
+    kind: row.kind ?? null,
+    sizeBytes: row.size_bytes ?? null,
+    previewUrl: assetPreviewUrl(row.metadata),
+  };
+}
+
+/** Lets a preview make a small copy of a large video once and record it for every later one. */
+function previewStore(context: McpUserContext) {
+  return previewCopyStore(context.supabase, context.user.id);
+}
+
 async function resolveOwnedAssetMap(
   context: McpUserContext,
   document: CreativeDocument,
 ): Promise<{ assets: CreativeRemotionAssetMap; requiredAssetIds: string[] }> {
   const requiredAssetIds = getCreativeDocumentAssetIds(document);
-  let rows: Array<{ id: string; url: string; mime_type: string | null }> = [];
+  let rows: Array<{ id: string; url: string; mime_type: string | null; kind: string | null; size_bytes: number | null; metadata: unknown }> = [];
   if (requiredAssetIds.length) {
     const { data } = await context.supabase
       .from("creative_assets")
-      .select("id, url, mime_type")
+      .select("id, url, mime_type, kind, size_bytes, metadata")
       .eq("user_id", context.user.id)
       .in("id", requiredAssetIds);
     rows = (data ?? []) as typeof rows;
   }
   return {
-    assets: getCreativeInputAssetMap(rows.map((row) => ({ id: row.id, url: row.url, mimeType: row.mime_type }))),
+    assets: getCreativeInputAssetMap(rows.map(assetMapInput)),
     requiredAssetIds,
   };
 }
@@ -434,6 +452,7 @@ async function renderProject(context: McpUserContext, request: CreativeProjectRe
         assets,
         options: requestedOptions,
         outputKey: userStoragePath(context.user.id, "renders", `${job.id}.mp4`),
+        previews: previewStore(context),
       });
       const now = new Date().toISOString();
       const { error: handleError } = await renderSupabase.from("creative_render_jobs").update({
@@ -504,6 +523,7 @@ async function renderDocumentFrames(
         assets,
         timesMs,
         contactSheet: withContactSheet,
+        previews: previewStore(context),
       }),
   );
 
@@ -642,7 +662,7 @@ export async function handleCreativeMcpTool(
     const { assetId, timesMs } = parseCreativeAssetProbeInput(input);
     const { data: asset } = await context.supabase
       .from("creative_assets")
-      .select("id, url, mime_type, kind, width, height, duration_ms")
+      .select("id, url, mime_type, kind, width, height, duration_ms, size_bytes, metadata")
       .eq("user_id", context.user.id)
       .eq("id", assetId)
       .maybeSingle();
@@ -672,9 +692,10 @@ export async function handleCreativeMcpTool(
       () =>
         creativeRenderAdapter.renderFrames({
           document,
-          assets: getCreativeInputAssetMap([{ id: asset.id, url: asset.url, mimeType: asset.mime_type }]),
+          assets: getCreativeInputAssetMap([assetMapInput(asset)]),
           timesMs,
           contactSheet: true,
+          previews: previewStore(context),
         }),
     );
 
@@ -757,7 +778,7 @@ export async function handleCreativeMcpTool(
     if (requestedInterval < 250) throw new Error("sample_interval_ms must be at least 250");
     const { data: asset } = await context.supabase
       .from("creative_assets")
-      .select("id, url, mime_type, kind, width, height, duration_ms, metadata")
+      .select("id, url, mime_type, kind, width, height, duration_ms, size_bytes, metadata")
       .eq("user_id", context.user.id)
       .eq("id", assetId)
       .maybeSingle();
@@ -781,9 +802,10 @@ export async function handleCreativeMcpTool(
     const rendered = await withCredits(context, "creative_frame", creativeFrameCost(resolved.length), () =>
       creativeRenderAdapter.renderFrames({
         document,
-        assets: getCreativeInputAssetMap([{ id: asset.id, url: asset.url, mimeType: asset.mime_type }]),
+        assets: getCreativeInputAssetMap([assetMapInput(asset)]),
         timesMs,
         contactSheet: true,
+        previews: previewStore(context),
       }),
     );
     const { measureReferenceFrame, analyzeReferenceFrameSeries } = await import("./reference-analysis");
@@ -845,8 +867,8 @@ export async function handleCreativeMcpTool(
     const [leftAssets, rightAssets] = await Promise.all([resolveOwnedAssetMap(context, left.document), resolveOwnedAssetMap(context, right.document)]);
     const { creativeRenderAdapter } = await import("./render");
     const [leftRender, rightRender] = await withCredits(context, "creative_frame", creativeFrameCost(timesMs.length * 2), () => Promise.all([
-      creativeRenderAdapter.renderFrames({ document: left.document, assets: leftAssets.assets, timesMs, contactSheet: true }),
-      creativeRenderAdapter.renderFrames({ document: right.document, assets: rightAssets.assets, timesMs, contactSheet: true }),
+      creativeRenderAdapter.renderFrames({ document: left.document, assets: leftAssets.assets, timesMs, contactSheet: true, previews: previewStore(context) }),
+      creativeRenderAdapter.renderFrames({ document: right.document, assets: rightAssets.assets, timesMs, contactSheet: true, previews: previewStore(context) }),
     ]));
     const { diffCreativeDocuments } = await import("./document-diff");
     const { scoreCreativeStructureSimilarity } = await import("./structure-profile");
@@ -1181,6 +1203,7 @@ export async function handleCreativeMcpTool(
                   quality: metadata.quality === "draft" ? "draft" : "final",
                 },
                 outputKey: detached.outputKey,
+                previews: previewStore(context),
               });
               const nextMetadata = { ...metadata, phase: "retrying-detached-render", retry_count: retryCount + 1, detached_render: handle, estimated_completion_ms: null };
               try {

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { deleteObject, listObjects } from "./b2";
 import { MEDIA_ROUTE_PREFIX, storagePathFromMediaUrl } from "./storage-paths";
+import { assetPreviewUrl } from "./creative/remotion";
 
 /**
  * The media gallery: every file in a user's storage folder, with what each one
@@ -14,7 +15,7 @@ import { MEDIA_ROUTE_PREFIX, storagePathFromMediaUrl } from "./storage-paths";
 export type MediaType = "image" | "video" | "audio" | "font" | "other";
 
 export interface MediaUse {
-  kind: "asset" | "render" | "video" | "character";
+  kind: "asset" | "preview" | "render" | "video" | "character";
   label: string;
   projectId: string | null;
   projectTitle: string | null;
@@ -100,6 +101,7 @@ function indexRows(rows: MediaRows) {
   const assetIds = new Map<string, string[]>();
   const renderIds = new Map<string, string[]>();
   const videoIds = new Map<string, string[]>();
+  const companions = new Map<string, string[]>();
   const add = <T>(map: Map<string, T[]>, path: string, value: T) => map.set(path, [...(map.get(path) ?? []), value]);
 
   for (const asset of rows.assets) {
@@ -112,11 +114,25 @@ function indexRows(rows: MediaRows) {
       projectId: asset.project_id,
       projectTitle: asset.project_id ? titles.get(asset.project_id) ?? null : null,
     });
+    // A large video's small preview copy belongs to it: labelled with it,
+    // locked with it, and deleted with it.
+    const previewPath = storagePathFromMediaUrl(assetPreviewUrl(asset.metadata));
+    if (previewPath) {
+      add(uses, previewPath, {
+        kind: "preview",
+        label: "preview copy",
+        projectId: asset.project_id,
+        projectTitle: asset.project_id ? titles.get(asset.project_id) ?? null : null,
+      });
+      add(companions, path, previewPath);
+    }
     for (const document of documents) {
       if (!document.text.includes(asset.id)) continue;
-      const projects = placed.get(path) ?? new Map<string, string>();
-      projects.set(document.id, titles.get(document.id) ?? "Untitled creative");
-      placed.set(path, projects);
+      for (const target of previewPath ? [path, previewPath] : [path]) {
+        const projects = placed.get(target) ?? new Map<string, string>();
+        projects.set(document.id, titles.get(document.id) ?? "Untitled creative");
+        placed.set(target, projects);
+      }
     }
   }
   for (const render of rows.renders) {
@@ -141,7 +157,7 @@ function indexRows(rows: MediaRows) {
       if (characterPath) add(uses, characterPath, { kind: "character", label: "video reference", projectId: null, projectTitle: null });
     }
   }
-  return { uses, placed, assetIds, renderIds, videoIds };
+  return { uses, placed, assetIds, renderIds, videoIds, companions };
 }
 
 /** Every stored file of the user's, newest first, labelled by the rows that use it. */
@@ -204,7 +220,10 @@ export function planMediaDeletion(userId: string, paths: string[], rows: MediaRo
       plan.blocked.push({ path, projects: [...projects.values()] });
       continue;
     }
-    plan.deletable.push(path);
+    if (!plan.deletable.includes(path)) plan.deletable.push(path);
+    for (const companion of index.companions.get(path) ?? []) {
+      if (!plan.deletable.includes(companion)) plan.deletable.push(companion);
+    }
     plan.assetIds.push(...(index.assetIds.get(path) ?? []));
     plan.renderIds.push(...(index.renderIds.get(path) ?? []));
     plan.videoIds.push(...(index.videoIds.get(path) ?? []));

@@ -8,7 +8,22 @@ export const CREATIVE_REMOTION_COMPOSITION_ID = "StudioCreative";
 export interface CreativeRemotionAssetInput {
   url: string;
   mimeType?: string | null;
+  /** "image", "video", "audio"...; lets the renderer pick what to copy locally. */
+  kind?: string | null;
+  sizeBytes?: number | null;
+  /**
+   * A small stored copy of a large video (see lib/creative/sandbox-media.ts).
+   * Previews read it instead of the original; the final MP4 never does.
+   */
+  previewUrl?: string | null;
 }
+
+/**
+ * An asset URL the renderer already copied into the sandbox's bundle. The
+ * composition turns it into a staticFile() path, so every frame reads the
+ * local file rather than downloading the original from storage again.
+ */
+export const SANDBOX_LOCAL_ASSET_PREFIX = "sandbox-local:";
 
 export type CreativeRemotionAssetMap = Record<string, CreativeRemotionAssetInput>;
 
@@ -92,9 +107,32 @@ export function getCreativeDocumentAssetIds(document: CreativeDocument): string[
 }
 
 export function getCreativeInputAssetMap(
-  assets: Array<{ id: string; url: string; mimeType?: string | null }>,
+  assets: Array<{
+    id: string;
+    url: string;
+    mimeType?: string | null;
+    kind?: string | null;
+    sizeBytes?: number | null;
+    previewUrl?: string | null;
+  }>,
 ): CreativeRemotionAssetMap {
   return Object.fromEntries(
-    assets.map((asset) => [asset.id, { url: asset.url, mimeType: asset.mimeType ?? null }]),
+    assets.map((asset) => [
+      asset.id,
+      {
+        url: asset.url,
+        mimeType: asset.mimeType ?? null,
+        ...(asset.kind ? { kind: asset.kind } : {}),
+        ...(asset.sizeBytes ? { sizeBytes: asset.sizeBytes } : {}),
+        ...(asset.previewUrl ? { previewUrl: asset.previewUrl } : {}),
+      },
+    ]),
   );
+}
+
+/** The preview copy recorded on an asset row's metadata, if one was made. */
+export function assetPreviewUrl(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const value = (metadata as Record<string, unknown>).preview_url;
+  return typeof value === "string" && value ? value : null;
 }

@@ -59,6 +59,21 @@ describe("media library", () => {
     expect(plan.videoIds).toEqual(["v1"]);
   });
 
+  it("labels a preview copy with its video and deletes it with the video", () => {
+    const withCopy: MediaRows = {
+      ...rows,
+      assets: rows.assets.map((asset) =>
+        asset.id.startsWith("2222") ? { ...asset, metadata: { preview_url: url("user-1/assets/previews/clip.mp4") } } : asset,
+      ),
+    };
+    const items = buildMediaLibrary(USER, [...files, { key: "user-1/assets/previews/clip.mp4", size: 20, lastModifiedMs: 7 }], withCopy);
+    const copy = items.find((item) => item.path === "user-1/assets/previews/clip.mp4")!;
+    expect(copy.uses[0]).toMatchObject({ kind: "preview", projectTitle: "Launch film" });
+
+    const plan = planMediaDeletion(USER, ["user-1/assets/clip.mp4"], withCopy);
+    expect(plan.deletable).toEqual(["user-1/assets/clip.mp4", "user-1/assets/previews/clip.mp4"]);
+  });
+
   it("never touches a path outside the caller's own folder", () => {
     expect(isOwnedMediaPath(USER, "user-1/images/a.png")).toBe(true);
     expect(isOwnedMediaPath(USER, "user-2/images/a.png")).toBe(false);

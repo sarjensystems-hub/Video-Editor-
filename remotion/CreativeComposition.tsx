@@ -6,6 +6,7 @@ import {
   Img,
   OffthreadVideo,
   Sequence,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -43,6 +44,7 @@ import {
 } from "../lib/creative/adjustments";
 import {
   getCreativeSceneTimeline,
+  SANDBOX_LOCAL_ASSET_PREFIX,
   type CreativeRemotionInputProps,
   type CreativeSceneTimelineEntry,
 } from "../lib/creative/remotion";
@@ -1286,7 +1288,26 @@ function CreativeAudioTrack({
   );
 }
 
-export function CreativeComposition({ document, assets }: CreativeRemotionInputProps) {
+/**
+ * Assets the renderer already copied into the bundle arrive marked; they are
+ * read from the bundle's own static server instead of from storage.
+ */
+function resolveLocalAssets(assets: CreativeRemotionInputProps["assets"]): CreativeRemotionInputProps["assets"] {
+  let changed = false;
+  const resolved: CreativeRemotionInputProps["assets"] = {};
+  for (const [id, asset] of Object.entries(assets ?? {})) {
+    if (asset.url.startsWith(SANDBOX_LOCAL_ASSET_PREFIX)) {
+      changed = true;
+      resolved[id] = { ...asset, url: staticFile(asset.url.slice(SANDBOX_LOCAL_ASSET_PREFIX.length)) };
+    } else {
+      resolved[id] = asset;
+    }
+  }
+  return changed ? resolved : assets;
+}
+
+export function CreativeComposition({ document, assets: inputAssets }: CreativeRemotionInputProps) {
+  const assets = React.useMemo(() => resolveLocalAssets(inputAssets), [inputAssets]);
   // Blocks the first frame until the document's typefaces are ready, so a
   // render can never contain some frames in the brand face and some in a
   // fallback. Times out rather than hanging.

@@ -138,6 +138,17 @@ export async function presignGet(path: string, expiresSeconds: number): Promise<
   return signed.url;
 }
 
+/**
+ * A time-limited URL that writes one whole file to `path`. The render sandbox
+ * uses it to store a preview copy it made, without holding any credential.
+ */
+export async function presignPut(path: string, expiresSeconds: number): Promise<string> {
+  const url = new URL(objectUrl(path));
+  url.searchParams.set("X-Amz-Expires", String(Math.round(expiresSeconds)));
+  const signed = await config().client.sign(url.toString(), { method: "PUT", aws: { signQuery: true } });
+  return signed.url;
+}
+
 // ── Multipart: how a browser sends a file of any size straight to B2 ──
 
 export async function createMultipartUpload(path: string, contentType: string): Promise<string> {

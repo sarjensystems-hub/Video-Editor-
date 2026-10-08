@@ -5,6 +5,7 @@
  */
 
 import { defaultAssetClass } from "./asset-class";
+import { assetPreviewUrl } from "./remotion";
 
 export interface EditorAsset {
   id: string;
@@ -12,6 +13,8 @@ export interface EditorAsset {
   /** What the asset is for; see lib/creative/asset-class.ts. */
   assetClass: string;
   url: string;
+  /** A small copy of a large video, played in the editor instead of the original. */
+  previewUrl?: string | null;
   filename?: string | null;
   mimeType?: string | null;
   durationMs?: number | null;
@@ -28,6 +31,7 @@ export function toEditorAsset(row: Record<string, unknown>): EditorAsset {
     kind,
     assetClass: typeof row.asset_class === "string" && row.asset_class ? row.asset_class : defaultAssetClass(kind),
     url: String(row.url),
+    previewUrl: assetPreviewUrl(metadata),
     filename: row.filename == null ? null : String(row.filename),
     mimeType: row.mime_type == null ? null : String(row.mime_type),
     durationMs: Number.isFinite(duration) && duration > 0 ? duration : null,
