@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveSiteId } from "@/lib/active-site";
-import { createCanonicalCreativeFixture } from "@/lib/creative/fixtures";
+import { createEmptyCreativeDocument } from "@/lib/creative/defaults";
+import { CREATIVE_CANVAS_FORMATS, resolveCanvasFormat } from "@/lib/creative/canvas-formats";
 import type { CreativeDocument } from "@/lib/creative/schema";
 import { validateCreativeDocument } from "@/lib/creative/validate";
 import { createRevisionSnapshot } from "@/lib/creative/persistence";
@@ -22,15 +23,24 @@ async function authenticatedClient() {
   return { supabase, user };
 }
 
-export async function createCreativeProject(title = "Untitled creative") {
+/**
+ * Creates a blank project in the chosen frame shape and opens it. Blank on
+ * purpose: starter layers laid out for one ratio land in the wrong places in
+ * every other, and the assistant builds into an empty scene anyway.
+ */
+export async function createCreativeProject(title = "Untitled creative", format?: string) {
   const auth = await authenticatedClient();
   if (!auth) redirect("/login");
   const { supabase, user } = auth;
   const siteId = await getActiveSiteId();
   const projectId = crypto.randomUUID();
-  const document = createCanonicalCreativeFixture();
-  document.id = projectId;
-  document.title = title.trim().slice(0, 140) || "Untitled creative";
+  const { width, height } = CREATIVE_CANVAS_FORMATS[resolveCanvasFormat(format)];
+  const document = createEmptyCreativeDocument({
+    id: projectId,
+    title: title.trim().slice(0, 140) || "Untitled creative",
+    width,
+    height,
+  });
 
   const validation = validateCreativeDocument(document);
   if (!validation.valid) throw new Error(validation.issues[0]?.message ?? "Invalid creative document");

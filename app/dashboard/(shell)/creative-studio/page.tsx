@@ -1,6 +1,6 @@
-import { Plus } from "lucide-react";
 import { createCreativeProject, listCreativeFolders, listCreativeProjects } from "@/app/actions/creative-studio";
 import CreativeExplorer from "@/components/creative/CreativeExplorer";
+import NewCreativeButton from "@/components/creative/NewCreativeButton";
 
 export default async function CreativeStudioPage({
   searchParams,
@@ -12,9 +12,9 @@ export default async function CreativeStudioPage({
   // in CreativeExplorer from here on, not through another server round trip.
   const [folders, projects] = await Promise.all([listCreativeFolders(), listCreativeProjects()]);
 
-  async function createAction() {
+  async function createAction(formData: FormData) {
     "use server";
-    await createCreativeProject("Untitled creative");
+    await createCreativeProject(String(formData.get("title") ?? ""), String(formData.get("format") ?? ""));
   }
 
   return (
@@ -30,14 +30,7 @@ export default async function CreativeStudioPage({
             editable, animatable and renderable.
           </p>
         </div>
-        <form action={createAction}>
-          <button
-            type="submit"
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-fire px-4 text-sm font-semibold text-white transition-colors hover:bg-fire-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fire/40 sm:h-9"
-          >
-            <Plus className="h-4 w-4" /> New creative
-          </button>
-        </form>
+        <NewCreativeButton action={createAction} />
       </header>
 
       <section className="flex-1">
