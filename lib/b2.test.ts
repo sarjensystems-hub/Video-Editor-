@@ -10,6 +10,10 @@ describe("B2 requests", () => {
     process.env.B2_APPLICATION_KEY = "secret";
     process.env.B2_BUCKET = "studio-videos";
     process.env.B2_ENDPOINT = "s3.us-east-005.backblazeb2.com";
+    delete process.env.TIGRIS_ACCESS_KEY_ID;
+    delete process.env.TIGRIS_SECRET_ACCESS_KEY;
+    delete process.env.TIGRIS_BUCKET;
+    delete process.env.TIGRIS_ENDPOINT;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
       calls.push({ url: String(url), init });
       return new Response("", { status: 200 });
@@ -38,5 +42,18 @@ describe("B2 requests", () => {
     expect(url.pathname).toBe("/studio-videos/user-1/images/x.png");
     expect(url.searchParams.get("X-Amz-Expires")).toBe("7200");
     expect(url.searchParams.get("X-Amz-Signature")).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("prefers Tigris when it is configured, with virtual-hosted addressing", async () => {
+    process.env.TIGRIS_ACCESS_KEY_ID = "tid";
+    process.env.TIGRIS_SECRET_ACCESS_KEY = "tsecret";
+    process.env.TIGRIS_BUCKET = "sarjen-studio";
+    const { putObject, presignGet } = await import("./b2");
+    await putObject("user-1/audio/v.mp3", new Uint8Array(10), "audio/mpeg");
+    expect(calls[0].url).toBe("https://sarjen-studio.t3.storage.dev/user-1/audio/v.mp3");
+    const headers = new Headers(calls[0].init.headers);
+    expect(headers.get("authorization")).toMatch(/Credential=tid\/\d{8}\/auto\/s3\/aws4_request/);
+    const signed = new URL(await presignGet("user-1/audio/v.mp3", 60));
+    expect(signed.host).toBe("sarjen-studio.t3.storage.dev");
   });
 });

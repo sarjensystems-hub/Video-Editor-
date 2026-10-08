@@ -22,14 +22,14 @@ function sendPart(url: string, blob: Blob, onBytes: (sent: number) => void, sign
     };
     xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Storage refused a part (${xhr.status})`)));
     // A request that fails before a single byte is sent never reached
-    // storage: a firewall or web filter blocking backblazeb2.com, or the
+    // storage: a firewall or web filter blocking the storage address (*.storage.dev), or the
     // bucket's CORS rule not covering this site's address.
     xhr.onerror = () =>
       reject(
         new Error(
           sentAny
             ? "The connection dropped while uploading"
-            : "Could not reach storage. A firewall or web filter may be blocking backblazeb2.com.",
+            : "Could not reach storage. A firewall or web filter may be blocking *.storage.dev.",
         ),
       );
     const abort = () => xhr.abort();

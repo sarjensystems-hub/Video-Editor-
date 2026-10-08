@@ -51,25 +51,31 @@
 
 ## Storage
 
-- Files live in one private Backblaze B2 bucket (`lib/b2.ts`, configured by
-  `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET`, `B2_ENDPOINT`). Supabase
-  holds the database and sign-in only; do not put files back in Supabase
-  Storage - its free plan refuses anything over 50 MB, and a guard test fails
-  on `.storage.from(`.
+- Files live in one private Tigris bucket (`lib/b2.ts`, configured by
+  `TIGRIS_ACCESS_KEY_ID`, `TIGRIS_SECRET_ACCESS_KEY`, `TIGRIS_BUCKET`,
+  optional `TIGRIS_ENDPOINT`). Backblaze B2 (`B2_*`) is the earlier provider
+  and only a fallback when Tigris is not configured. Supabase holds the
+  database and sign-in only; do not put files back in Supabase Storage - its
+  free plan refuses anything over 50 MB, and a guard test fails on
+  `.storage.from(`.
+- No card is on file anywhere. Tigris's free plan allows 5 GB stored, 10,000
+  writes and 100,000 reads a month, and interrupts service past them rather
+  than billing. Downloads themselves are free. Keep request counts low.
 - A file's stored URL is `/media/<path>` on the app's own domain, which
-  redirects to a short-lived signed B2 URL. Never store a B2 URL itself.
-- Browser uploads go straight to B2 as multipart uploads with per-part signed
-  URLs; nothing passes through a Vercel function, so there is no size cap.
-  That needs a bucket CORS rule allowing `s3_put` from the app's address,
-  which Backblaze's web console cannot create (it makes download-only rules).
-  It is set on the bucket already; a new domain needs it extended through
-  B2's native API (`b2_update_bucket`) with a key that has `writeBuckets` -
-  the app's own key deliberately does not.
+  redirects to a short-lived signed storage URL. Never store a storage URL
+  itself; that is what made moving providers a pure copy.
+- Browser uploads go straight to storage as multipart uploads with per-part
+  signed URLs; nothing passes through a Vercel function, so there is no size
+  cap. The bucket's CORS rule allows GET, PUT and HEAD from the app's three
+  addresses; a new domain needs adding to it (PutBucketCors, or the Tigris
+  console).
+- Company networks behind a firewall must allow `*.storage.dev` for uploads
+  and playback.
 - Every file lives under `<userId>/<kind>/…`, built only by
   `lib/storage-paths.ts`; a guard test fails on a hand-built path, and deletes
   refuse any path outside the caller's own folder.
-- Storage downloads are capped (the free plan allows 1 GB a day), so renders
-  must not re-read media per frame. `lib/creative/sandbox-media.ts` copies a
+- Storage requests are capped, and Backblaze's free plan capped downloads at
+  1 GB a day, so renders must not re-read media per frame. `lib/creative/sandbox-media.ts` copies a
   render's media into the sandbox once, and previews and draft renders read a
   large video's small stored preview copy (`metadata.preview_url`, made on
   first use). The final MP4 always reads originals.

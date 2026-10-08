@@ -21,27 +21,39 @@ if (!isVercel) {
 const deploymentId = process.env.VERCEL_DEPLOYMENT_ID;
 if (!deploymentId) throw new Error("VERCEL_DEPLOYMENT_ID is required for creative render snapshots");
 
-// Snapshot metadata lives in the same B2 bucket as every stored file, under
-// a system prefix outside all user folders. lib/creative/render.ts reads it.
-const keyId = process.env.B2_KEY_ID?.trim();
-const applicationKey = process.env.B2_APPLICATION_KEY?.trim();
-const bucket = process.env.B2_BUCKET?.trim();
-const endpoint = process.env.B2_ENDPOINT?.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
-if (!keyId || !applicationKey || !bucket || !endpoint) {
-  throw new Error("B2 credentials are required for creative render snapshot metadata");
+// Snapshot metadata lives in the same bucket as every stored file, under a
+// system prefix outside all user folders. lib/creative/render.ts reads it, so
+// this must pick the provider exactly as lib/b2.ts does: Tigris when it is
+// configured, Backblaze otherwise.
+const tigris = ["TIGRIS_ACCESS_KEY_ID", "TIGRIS_SECRET_ACCESS_KEY", "TIGRIS_BUCKET"].every((name) => process.env[name]?.trim());
+const stripHost = (value) => value.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+let keyId;
+let applicationKey;
+let region;
+let bucketUrl;
+if (tigris) {
+  keyId = process.env.TIGRIS_ACCESS_KEY_ID.trim();
+  applicationKey = process.env.TIGRIS_SECRET_ACCESS_KEY.trim();
+  region = "auto";
+  bucketUrl = `https://${process.env.TIGRIS_BUCKET.trim()}.${stripHost(process.env.TIGRIS_ENDPOINT || "https://t3.storage.dev")}`;
+} else {
+  keyId = process.env.B2_KEY_ID?.trim();
+  applicationKey = process.env.B2_APPLICATION_KEY?.trim();
+  const bucket = process.env.B2_BUCKET?.trim();
+  const endpoint = process.env.B2_ENDPOINT ? stripHost(process.env.B2_ENDPOINT) : "";
+  if (!keyId || !applicationKey || !bucket || !endpoint) {
+    throw new Error("Storage credentials are required for creative render snapshot metadata");
+  }
+  region = endpoint.match(/^s3\.([a-z0-9-]+)\.backblazeb2\.com$/i)?.[1] ?? "us-east-1";
+  bucketUrl = `https://${endpoint}/${encodeURIComponent(bucket)}`;
 }
+console.log(`[creative-render] snapshot metadata stored with ${tigris ? "Tigris" : "Backblaze B2"}`);
 
 const PREFIX = "_system/render-snapshots/";
 const currentKey = `${PREFIX}${deploymentId}.json`;
 const bundleDir = resolve(process.cwd(), ".remotion-creative");
 
-const b2 = new AwsClient({
-  accessKeyId: keyId,
-  secretAccessKey: applicationKey,
-  service: "s3",
-  region: endpoint.match(/^s3\.([a-z0-9-]+)\.backblazeb2\.com$/i)?.[1] ?? "us-east-1",
-});
-const bucketUrl = `https://${endpoint}/${encodeURIComponent(bucket)}`;
+const b2 = new AwsClient({ accessKeyId: keyId, secretAccessKey: applicationKey, service: "s3", region });
 const objectUrl = (key) => `${bucketUrl}/${key.split("/").map(encodeURIComponent).join("/")}`;
 
 async function readMetadata(key, lastModifiedMs = 0) {

@@ -1,21 +1,81 @@
 /**
- * Backblaze B2 through its S3-compatible API: the one place every stored
- * file lives. Supabase keeps the database and sign-in; files left it because
- * its free plan refuses anything over 50 MB, which is most video.
+ * Object storage through the S3 API: the one place every stored file lives.
+ * Supabase keeps the database and sign-in; files left it because its free
+ * plan refuses anything over 50 MB, which is most video.
  *
- * The bucket is private. Nothing outside this module ever sees a B2 URL that
- * lasts: files are addressed as `/media/<path>` on the app's own domain
- * (lib/media-url.ts), and that route hands out a short-lived signed URL.
+ * Two providers speak the same API here:
+ *   - Tigris (TIGRIS_*), preferred whenever it is configured. Downloads are
+ *     free; its free plan caps storage at 5 GB and requests per month, and
+ *     interrupts service past them rather than billing, since no card is on
+ *     file.
+ *   - Backblaze B2 (B2_*), the earlier provider, kept as the fallback. Its
+ *     free plan caps downloads at 1 GB a day, which a video editor exhausts.
+ *
+ * The bucket is private. Nothing outside this module ever sees a storage URL
+ * that lasts: files are addressed as `/media/<path>` on the app's own domain,
+ * and that route hands out a short-lived signed URL.
  *
  * Requests are signed with aws4fetch (SigV4) rather than the AWS SDK, which
- * would add megabytes to every function for six calls.
+ * would add megabytes to every function for a handful of calls.
  */
 
 import { AwsClient } from "aws4fetch";
 
+export interface StorageTarget {
+  provider: "tigris" | "b2";
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+  /** Bucket root URL; object keys are appended to it. */
+  bucketUrl: string;
+}
+
+function clean(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function host(value: string): string {
+  return value.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+}
+
+/** Which bucket the app stores in, from the environment. Tigris wins when both are set. */
+export function resolveStorageTarget(env: NodeJS.ProcessEnv = process.env): StorageTarget | null {
+  const tigrisKey = clean(env.TIGRIS_ACCESS_KEY_ID);
+  const tigrisSecret = clean(env.TIGRIS_SECRET_ACCESS_KEY);
+  const tigrisBucket = clean(env.TIGRIS_BUCKET);
+  if (tigrisKey && tigrisSecret && tigrisBucket) {
+    // Virtual-hosted addressing, which Tigris recommends; verified at build
+    // time alongside path-style before the switch.
+    const endpoint = host(clean(env.TIGRIS_ENDPOINT) ?? "https://t3.storage.dev");
+    return {
+      provider: "tigris",
+      accessKeyId: tigrisKey,
+      secretAccessKey: tigrisSecret,
+      region: "auto",
+      bucketUrl: `https://${tigrisBucket}.${endpoint}`,
+    };
+  }
+  const keyId = clean(env.B2_KEY_ID);
+  const applicationKey = clean(env.B2_APPLICATION_KEY);
+  const bucket = clean(env.B2_BUCKET);
+  const b2Endpoint = clean(env.B2_ENDPOINT);
+  if (keyId && applicationKey && bucket && b2Endpoint) {
+    const endpoint = host(b2Endpoint);
+    return {
+      provider: "b2",
+      accessKeyId: keyId,
+      secretAccessKey: applicationKey,
+      // s3.us-east-005.backblazeb2.com -> us-east-005
+      region: endpoint.match(/^s3\.([a-z0-9-]+)\.backblazeb2\.com$/i)?.[1] ?? "us-east-1",
+      bucketUrl: `https://${endpoint}/${encodeURIComponent(bucket)}`,
+    };
+  }
+  return null;
+}
+
 interface B2Config {
   client: AwsClient;
-  /** `https://s3.<region>.backblazeb2.com/<bucket>`, path-style. */
   bucketUrl: string;
 }
 
@@ -23,25 +83,25 @@ let cached: B2Config | null = null;
 
 function config(): B2Config {
   if (cached) return cached;
-  const keyId = process.env.B2_KEY_ID?.trim();
-  const applicationKey = process.env.B2_APPLICATION_KEY?.trim();
-  const bucket = process.env.B2_BUCKET?.trim();
-  const endpoint = process.env.B2_ENDPOINT?.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
-  if (!keyId || !applicationKey || !bucket || !endpoint) {
-    throw new Error("File storage is not configured: set B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET and B2_ENDPOINT");
+  const target = resolveStorageTarget();
+  if (!target) {
+    throw new Error("File storage is not configured: set TIGRIS_ACCESS_KEY_ID, TIGRIS_SECRET_ACCESS_KEY and TIGRIS_BUCKET");
   }
-  // s3.us-east-005.backblazeb2.com -> us-east-005
-  const region = endpoint.match(/^s3\.([a-z0-9-]+)\.backblazeb2\.com$/i)?.[1] ?? "us-east-1";
   cached = {
-    client: new AwsClient({ accessKeyId: keyId, secretAccessKey: applicationKey, service: "s3", region }),
-    bucketUrl: `https://${endpoint}/${encodeURIComponent(bucket)}`,
+    client: new AwsClient({
+      accessKeyId: target.accessKeyId,
+      secretAccessKey: target.secretAccessKey,
+      service: "s3",
+      region: target.region,
+    }),
+    bucketUrl: target.bucketUrl,
   };
   return cached;
 }
 
 /** Whether storage is configured at all; lets tests and local builds say so plainly. */
 export function isB2Configured(): boolean {
-  return Boolean(process.env.B2_KEY_ID && process.env.B2_APPLICATION_KEY && process.env.B2_BUCKET && process.env.B2_ENDPOINT);
+  return resolveStorageTarget() !== null;
 }
 
 /** Encodes each path segment, keeping the slashes that make the folders. */
@@ -56,7 +116,7 @@ function objectUrl(path: string, query = ""): string {
 async function failure(response: Response, action: string): Promise<Error> {
   const text = await response.text().catch(() => "");
   const message = text.match(/<Message>([^<]*)<\/Message>/)?.[1] ?? text.slice(0, 300);
-  return new Error(`B2 ${action} failed (${response.status}): ${message}`);
+  return new Error(`Storage ${action} failed (${response.status}): ${message}`);
 }
 
 /**
@@ -94,7 +154,7 @@ export async function getObjectText(path: string): Promise<string | null> {
 export async function headObject(path: string): Promise<{ size: number; contentType: string | null } | null> {
   const response = await config().client.fetch(objectUrl(path), { method: "HEAD" });
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`B2 head of ${path} failed (${response.status})`);
+  if (!response.ok) throw new Error(`Storage head of ${path} failed (${response.status})`);
   return {
     size: Number(response.headers.get("content-length") ?? 0),
     contentType: response.headers.get("content-type"),
@@ -155,7 +215,7 @@ export async function createMultipartUpload(path: string, contentType: string): 
   const response = await sendWithBody(objectUrl(path, "?uploads"), "POST", "", { "Content-Type": contentType });
   if (!response.ok) throw await failure(response, "starting the upload");
   const uploadId = (await response.text()).match(/<UploadId>([^<]*)<\/UploadId>/)?.[1];
-  if (!uploadId) throw new Error("B2 did not return an upload id");
+  if (!uploadId) throw new Error("Storage did not return an upload id");
   return decodeXml(uploadId);
 }
 
@@ -211,7 +271,7 @@ export async function completeMultipartUpload(path: string, uploadId: string, ex
   const text = await response.text();
   // S3 can answer 200 with an <Error> body when completion fails late.
   if (!response.ok || /<Error>/.test(text)) {
-    throw new Error(`B2 could not finish the upload: ${text.match(/<Message>([^<]*)<\/Message>/)?.[1] ?? response.status}`);
+    throw new Error(`Storage could not finish the upload: ${text.match(/<Message>([^<]*)<\/Message>/)?.[1] ?? response.status}`);
   }
 }
 
