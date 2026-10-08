@@ -1,59 +1,59 @@
 /**
- * Object storage: one Supabase Storage bucket, one folder per user.
+ * Object storage: one private Backblaze B2 bucket, one folder per user.
  *
  * Every path is built by `lib/storage-paths.ts`, so every file sits under
- * `<userId>/…`. Uploads return the public URL or `null` on failure, logged
- * loudly; deletes take the URLs the database recorded and remove only files
- * inside the caller's own folder.
+ * `<userId>/…`. Uploads return the file's permanent `/media/<path>` URL on
+ * the app's own domain, which redirects to a short-lived signed B2 URL
+ * (app/media/[...path]/route.ts); deletes take the URLs the database recorded
+ * and remove only files inside the caller's own folder.
+ *
+ * Files used to live in Supabase Storage, whose free plan refuses any single
+ * file over 50 MB. Supabase still holds the database and sign-in.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
 import type { AIImageResult } from "@/lib/image-gen";
-import { storagePathFromPublicUrl, userStoragePath } from "@/lib/storage-paths";
-
-export const STORAGE_BUCKET = "article-images";
+import { appUrl, requestOrigin } from "@/lib/app-url";
+import { deleteObject, putObject } from "@/lib/b2";
+import { mediaUrlFor, storagePathFromMediaUrl, userStoragePath } from "@/lib/storage-paths";
 
 /**
- * The Supabase client uploads are made with, for requests that do not
- * authenticate through browser cookies.
+ * The origin a stored file's URL is written with.
  *
- * Writes used to go through `createClient()` from `@/lib/supabase/server`,
- * which reads the session cookie. An MCP request has no cookie — it carries a
- * Bearer token — so every upload it made went out as the anonymous role, was
- * refused by the bucket policy, and came back as `null`. The worst case was a
- * finished video: generated and billed by OpenRouter, then lost at the last
- * step because there was nowhere to put it.
- *
- * The MCP route already holds a client authorised for the caller, so it opens
- * this scope with that client and every storage call underneath uses it —
- * including work that finishes after the response, since the scope survives
- * `after()`. Browser routes open no scope and keep using their cookie session.
+ * Work that finishes after its response - a render, a generated video - has
+ * no request left to ask, so the route that started it opens this scope with
+ * its own origin and everything stored underneath uses it.
  */
-const storageClientScope = new AsyncLocalStorage<SupabaseClient>();
+const mediaOriginScope = new AsyncLocalStorage<string>();
 
-export function runWithStorageClient<T>(client: SupabaseClient, fn: () => Promise<T>): Promise<T> {
-  return storageClientScope.run(client, fn);
+export function runWithMediaOrigin<T>(origin: string, fn: () => Promise<T>): Promise<T> {
+  return mediaOriginScope.run(origin, fn);
 }
 
-async function storageClient(): Promise<SupabaseClient> {
-  return storageClientScope.getStore() ?? (await createClient());
+async function mediaOrigin(): Promise<string> {
+  const scoped = mediaOriginScope.getStore();
+  if (scoped) return scoped;
+  try {
+    return await requestOrigin();
+  } catch {
+    return appUrl();
+  }
 }
 
-/** Uploads bytes to `path` and returns the public URL, or null on failure. */
+/** The permanent URL of an already-stored file. */
+export async function mediaUrl(path: string): Promise<string> {
+  return mediaUrlFor(await mediaOrigin(), path);
+}
+
+/** Uploads bytes to `path` and returns the file's permanent URL, or null on failure. */
 export async function uploadAnyBytes(
   bytes: Uint8Array,
   path: string,
   contentType: string,
 ): Promise<string | null> {
   try {
-    const supabase = await storageClient();
-    const { data, error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(path, bytes, { contentType, upsert: true });
-    if (error) throw new Error(error.message);
-    return supabase.storage.from(STORAGE_BUCKET).getPublicUrl(data.path).data.publicUrl;
+    await putObject(path, bytes, contentType);
+    return await mediaUrl(path);
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     console.error(`[storage] upload of ${path} failed: ${message}`);
@@ -92,10 +92,10 @@ export async function uploadAIImage(
  * Removes the stored files behind `urls`, which are URLs this app recorded in
  * the database (asset URLs, render outputs, video URLs).
  *
- * Only files in our own bucket, on our own Supabase project and inside
- * `userId`'s folder are touched. That boundary matters because a
- * connector request's client bypasses row-level security, and a URL column
- * is data: without the check, a crafted URL could name someone else's file.
+ * Only `/media/` URLs naming a path inside `userId`'s folder are touched. That
+ * boundary matters because a URL column is data: without the check, a
+ * crafted URL could name someone else's file. URLs from the old Supabase
+ * storage are skipped - that storage was discarded, not migrated.
  *
  * Best-effort by design: a file that cannot be removed is logged and
  * reported, never allowed to block the database delete the user asked for.
@@ -104,26 +104,12 @@ export async function deleteUserFiles(
   userId: string,
   urls: Array<string | null | undefined>,
 ): Promise<{ removed: number; skipped: number; notRemoved: number }> {
-  const ownHost = (() => {
-    try {
-      return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").host;
-    } catch {
-      return null;
-    }
-  })();
-
   const paths = new Set<string>();
   let skipped = 0;
   for (const url of urls) {
     if (!url) continue;
-    let host: string | null = null;
-    try {
-      host = new URL(url).host;
-    } catch {
-      host = null;
-    }
-    const path = storagePathFromPublicUrl(url, STORAGE_BUCKET);
-    if (!path || !ownHost || host !== ownHost || !path.startsWith(`${userId}/`)) {
+    const path = storagePathFromMediaUrl(url);
+    if (!path || !path.startsWith(`${userId}/`)) {
       skipped += 1;
       continue;
     }
@@ -131,15 +117,19 @@ export async function deleteUserFiles(
   }
   if (paths.size === 0) return { removed: 0, skipped, notRemoved: 0 };
 
-  try {
-    const supabase = await storageClient();
-    const { data, error } = await supabase.storage.from(STORAGE_BUCKET).remove([...paths]);
-    if (error) throw new Error(error.message);
-    const removed = data?.length ?? 0;
-    // remove() leaves already-missing files out of `data` rather than erroring.
-    return { removed, skipped, notRemoved: paths.size - removed };
-  } catch (cause) {
-    console.error(`[storage] could not delete ${paths.size} file(s): ${cause instanceof Error ? cause.message : cause}`);
-    return { removed: 0, skipped, notRemoved: paths.size };
-  }
+  let removed = 0;
+  // A handful of files at a time: a workspace can hold hundreds.
+  const queue = [...paths];
+  await Promise.all(
+    Array.from({ length: Math.min(6, queue.length) }, async () => {
+      for (let path = queue.shift(); path; path = queue.shift()) {
+        const ok = await deleteObject(path).catch((cause) => {
+          console.error(`[storage] could not delete ${path}: ${cause instanceof Error ? cause.message : cause}`);
+          return false;
+        });
+        if (ok) removed += 1;
+      }
+    }),
+  );
+  return { removed, skipped, notRemoved: paths.size - removed };
 }

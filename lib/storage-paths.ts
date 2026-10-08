@@ -8,9 +8,9 @@
  *   <userId>/audio/       voiceover, music and sound effects
  *   <userId>/renders/     finished MP4 exports
  *
- * The user id first is not decoration: the bucket's row-level security
- * allows a write only when the first folder is the writer's own id, and a
- * user's whole footprint can be found, measured or removed by one prefix.
+ * The user id first is not decoration: deletes refuse any path outside the
+ * caller's own folder, and a user's whole footprint can be found, measured
+ * or removed by one prefix.
  * Paths used to start with a kind and put the user id second, a layout from
  * Cloudflare R2 that has no row-level security, and the policy refused them.
  *
@@ -41,14 +41,21 @@ export function isUserStoragePath(userId: string, kind: StorageKind, path: unkno
   return !path.slice(prefix.length).split("/").some((segment) => segment === ".." || segment === "");
 }
 
-const PUBLIC_MARKER = "/storage/v1/object/public/";
+/** Where stored files are served from on the app's own domain. */
+export const MEDIA_ROUTE_PREFIX = "/media/";
+
+/** The app URL that serves the stored file at `path`. */
+export function mediaUrlFor(origin: string, path: string): string {
+  return `${origin.replace(/\/+$/, "")}${MEDIA_ROUTE_PREFIX}${path.split("/").map(encodeURIComponent).join("/")}`;
+}
 
 /**
- * The bucket path behind one of our public URLs, or null for anything that
- * is not a file in `bucket` (an external URL, an R2 URL, a different bucket).
- * Deleting goes through this so it can only ever touch files we stored.
+ * The storage path behind one of our `/media/` URLs, on whichever domain the
+ * app answered on, or null for anything else (an external URL, a file from
+ * the old Supabase storage). Deleting goes through this, so it can only ever
+ * touch files we stored.
  */
-export function storagePathFromPublicUrl(url: string | null | undefined, bucket: string): string | null {
+export function storagePathFromMediaUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   let parsed: URL;
   try {
@@ -56,9 +63,12 @@ export function storagePathFromPublicUrl(url: string | null | undefined, bucket:
   } catch {
     return null;
   }
-  const prefix = `${PUBLIC_MARKER}${bucket}/`;
-  const index = parsed.pathname.indexOf(prefix);
-  if (index < 0) return null;
-  const path = decodeURIComponent(parsed.pathname.slice(index + prefix.length));
-  return path && !path.split("/").includes("..") ? path : null;
+  if (!parsed.pathname.startsWith(MEDIA_ROUTE_PREFIX)) return null;
+  let path: string;
+  try {
+    path = decodeURIComponent(parsed.pathname.slice(MEDIA_ROUTE_PREFIX.length));
+  } catch {
+    return null;
+  }
+  return path && !path.split("/").some((segment) => segment === ".." || segment === "") ? path : null;
 }

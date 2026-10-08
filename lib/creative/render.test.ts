@@ -13,6 +13,10 @@ const sharpFactory = vi.fn();
 vi.mock("../storage", () => ({
   uploadAnyBytes: (...args: unknown[]) => uploadAnyBytes(...args),
 }));
+const getObjectText = vi.fn();
+vi.mock("../b2", () => ({
+  getObjectText: (...args: unknown[]) => getObjectText(...args),
+}));
 vi.mock("@remotion/vercel", () => ({
   renderStillOnVercel: (...args: unknown[]) => renderStillOnVercel(...args),
   renderMediaOnVercel: (...args: unknown[]) => renderMediaOnVercel(...args),
@@ -22,7 +26,7 @@ vi.mock("@vercel/sandbox", () => ({
 }));
 vi.mock("sharp", () => ({ default: (...args: unknown[]) => sharpFactory(...args) }));
 
-const SNAPSHOT_URL = "https://cdn.example.com/storage/v1/object/public/creative-render-snapshots/deployment-1.json";
+const SNAPSHOT_KEY = "_system/render-snapshots/deployment-1.json";
 
 function pngBytes(marker: number) {
   return new Uint8Array([0x89, 0x50, 0x4e, 0x47, marker]);
@@ -61,15 +65,11 @@ describe("creative still-frame render boundary", () => {
     sharpFactory.mockReset();
 
     process.env.VERCEL_DEPLOYMENT_ID = "deployment-1";
-    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://cdn.example.com/";
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        expect(url).toBe(SNAPSHOT_URL);
-        return { ok: true, json: async () => ({ snapshotId: "snap-1" }) } as unknown as Response;
-      }),
-    );
+    getObjectText.mockReset();
+    getObjectText.mockImplementation(async (key: string) => {
+      expect(key).toBe(SNAPSHOT_KEY);
+      return JSON.stringify({ snapshotId: "snap-1" });
+    });
 
     sandboxCreate.mockResolvedValue({ fs: { readFile }, stop: sandboxStop, vcpus: 8 });
     readFile.mockImplementation(async () => pngBytes(1));

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveSiteId } from "@/lib/active-site";
-import { STORAGE_BUCKET } from "@/lib/storage";
+import { completeMultipartUpload, headObject } from "@/lib/b2";
+import { mediaUrl } from "@/lib/storage";
+import { planUploadParts } from "@/lib/creative/asset-upload-plan";
 import { isUserStoragePath } from "@/lib/storage-paths";
 import { resolveAssetClass } from "@/lib/creative/asset-class";
 import { positiveInt, safeUploadFilename, uploadKindFor } from "@/lib/creative/asset-upload";
@@ -12,9 +14,9 @@ const ASSET_COLUMNS =
   "id, project_id, kind, asset_class, source, url, mime_type, filename, width, height, duration_ms, size_bytes, metadata, created_at";
 
 /**
- * Step two of an upload: records a file the browser has already written into
- * the user's storage folder (step one is `/api/creative/assets/upload-url`) as
- * a project asset, with the class and notes the person gave it.
+ * Step two of an upload: joins the parts the browser wrote into the user's
+ * storage folder (step one is `/api/creative/assets/upload-url`) and records
+ * the file as a project asset, with the class and notes the person gave it.
  *
  * Nothing here is taken on trust: the path must sit inside the caller's own
  * assets folder and the file must actually be there.
@@ -42,12 +44,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "That upload path is not in your folder" }, { status: 403 });
   }
   const name = path.slice(path.lastIndexOf("/") + 1);
-  // The bucket is public and grants no listing, so the file's own public URL
-  // is how to confirm it landed — and how big it really is.
-  const url = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path).data.publicUrl;
-  const head = await fetch(url, { method: "HEAD", cache: "no-store" }).catch(() => null);
-  if (!head?.ok) return NextResponse.json({ error: "The file did not finish uploading" }, { status: 409 });
-  const storedSize = Number(head.headers.get("content-length"));
+  // Join the parts the browser sent. Which parts B2 actually holds is read
+  // from B2 itself, so a part that silently failed cannot be skipped.
+  if (typeof body.uploadId === "string" && body.uploadId) {
+    const { partCount } = planUploadParts(Number(body.size));
+    try {
+      await completeMultipartUpload(path, body.uploadId, partCount);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 409 });
+    }
+  }
+  const stored = await headObject(path).catch(() => null);
+  if (!stored) return NextResponse.json({ error: "The file did not finish uploading" }, { status: 409 });
+  const storedSize = stored.size;
+  const url = await mediaUrl(path);
 
   const contentType =
     typeof body.contentType === "string" && body.contentType ? body.contentType : "application/octet-stream";

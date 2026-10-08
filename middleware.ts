@@ -83,7 +83,8 @@ export const config = {
      * - _next/image (image optimization)
      * - favicon.ico
      * - public folder files
+     * - media (stored files: a redirect needs no session, and the renderer has none)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|media/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

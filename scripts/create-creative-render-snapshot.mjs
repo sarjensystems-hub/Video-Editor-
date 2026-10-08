@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createClient } from "@supabase/supabase-js";
+import { AwsClient } from "aws4fetch";
 import { addBundleToSandbox, createSandbox, renderMediaOnVercel } from "@remotion/vercel";
 import {
   CREATIVE_RENDERER_FINGERPRINT_KIND,
@@ -21,26 +21,33 @@ if (!isVercel) {
 const deploymentId = process.env.VERCEL_DEPLOYMENT_ID;
 if (!deploymentId) throw new Error("VERCEL_DEPLOYMENT_ID is required for creative render snapshots");
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error("Supabase credentials are required for creative render snapshot metadata");
+// Snapshot metadata lives in the same B2 bucket as every stored file, under
+// a system prefix outside all user folders. lib/creative/render.ts reads it.
+const keyId = process.env.B2_KEY_ID?.trim();
+const applicationKey = process.env.B2_APPLICATION_KEY?.trim();
+const bucket = process.env.B2_BUCKET?.trim();
+const endpoint = process.env.B2_ENDPOINT?.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+if (!keyId || !applicationKey || !bucket || !endpoint) {
+  throw new Error("B2 credentials are required for creative render snapshot metadata");
 }
 
-const BUCKET = "creative-render-snapshots";
-const currentKey = `${deploymentId}.json`;
+const PREFIX = "_system/render-snapshots/";
+const currentKey = `${PREFIX}${deploymentId}.json`;
 const bundleDir = resolve(process.cwd(), ".remotion-creative");
 
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
-  auth: { persistSession: false, autoRefreshToken: false },
+const b2 = new AwsClient({
+  accessKeyId: keyId,
+  secretAccessKey: applicationKey,
+  service: "s3",
+  region: endpoint.match(/^s3\.([a-z0-9-]+)\.backblazeb2\.com$/i)?.[1] ?? "us-east-1",
 });
+const bucketUrl = `https://${endpoint}/${encodeURIComponent(bucket)}`;
+const objectUrl = (key) => `${bucketUrl}/${key.split("/").map(encodeURIComponent).join("/")}`;
 
 async function readMetadata(key, lastModifiedMs = 0) {
-  const { data, error } = await supabase.storage.from(BUCKET).download(key);
-  if (error || !data) return null;
-
-  const text = await data.text();
-  const parsed = JSON.parse(text);
+  const response = await b2.fetch(objectUrl(key));
+  if (!response.ok) return null;
+  const parsed = JSON.parse(await response.text());
   if (!parsed || typeof parsed !== "object") return null;
 
   return {
@@ -52,18 +59,19 @@ async function readMetadata(key, lastModifiedMs = 0) {
 
 async function listSnapshotMetadata() {
   const records = [];
-  const { data: objects, error } = await supabase.storage.from(BUCKET).list();
-  if (error) throw new Error(`Could not list creative render snapshot metadata: ${error.message}`);
+  const response = await b2.fetch(`${bucketUrl}?${new URLSearchParams({ "list-type": "2", prefix: PREFIX })}`);
+  if (!response.ok) {
+    throw new Error(`Could not list creative render snapshot metadata (${response.status}): ${(await response.text()).slice(0, 300)}`);
+  }
+  const xml = await response.text();
 
-  for (const object of objects ?? []) {
-    const key = object.name;
+  for (const block of xml.match(/<Contents>[\s\S]*?<\/Contents>/g) ?? []) {
+    const key = block.match(/<Key>([^<]*)<\/Key>/)?.[1];
     if (!key || key === currentKey || !key.endsWith(".json")) continue;
+    const modified = Date.parse(block.match(/<LastModified>([^<]*)<\/LastModified>/)?.[1] ?? "");
 
     try {
-      const record = await readMetadata(
-        key,
-        object.updated_at ? new Date(object.updated_at).getTime() : 0,
-      );
+      const record = await readMetadata(key, Number.isFinite(modified) ? modified : 0);
       if (record) records.push(record);
     } catch (error) {
       console.warn(`[creative-render] ignoring unreadable snapshot metadata ${key}`, error);
@@ -74,12 +82,14 @@ async function listSnapshotMetadata() {
 }
 
 async function writeDeploymentMetadata(metadata) {
-  const { error } = await supabase.storage.from(BUCKET).upload(
-    currentKey,
-    JSON.stringify(metadata),
-    { contentType: "application/json", cacheControl: "0", upsert: true },
-  );
-  if (error) throw new Error(`Could not write creative render snapshot metadata: ${error.message}`);
+  const response = await b2.fetch(objectUrl(currentKey), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    body: JSON.stringify(metadata),
+  });
+  if (!response.ok) {
+    throw new Error(`Could not write creative render snapshot metadata (${response.status}): ${(await response.text()).slice(0, 300)}`);
+  }
 }
 
 const fingerprint = await fingerprintCreativeRendererSource(process.cwd());

@@ -51,9 +51,18 @@
 
 ## Storage
 
+- Files live in one private Backblaze B2 bucket (`lib/b2.ts`, configured by
+  `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET`, `B2_ENDPOINT`). Supabase
+  holds the database and sign-in only; do not put files back in Supabase
+  Storage - its free plan refuses anything over 50 MB, and a guard test fails
+  on `.storage.from(`.
+- A file's stored URL is `/media/<path>` on the app's own domain, which
+  redirects to a short-lived signed B2 URL. Never store a B2 URL itself.
+- Browser uploads go straight to B2 as multipart uploads with per-part signed
+  URLs; nothing passes through a Vercel function, so there is no size cap.
 - Every file lives under `<userId>/<kind>/…`, built only by
-  `lib/storage-paths.ts`; a guard test fails on a hand-built path. The bucket
-  policy allows a write only into the writer's own folder.
+  `lib/storage-paths.ts`; a guard test fails on a hand-built path, and deletes
+  refuse any path outside the caller's own folder.
 - Preview frames are never stored. They are rendered in memory and returned
   inline as WebP (`lib/mcp-server/inline-images.ts`).
 - Anything that deletes a project or workspace deletes its files too, through

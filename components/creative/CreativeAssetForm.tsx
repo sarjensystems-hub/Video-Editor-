@@ -15,7 +15,7 @@ import {
 } from "@/lib/creative/asset-class";
 import { uploadKindFor } from "@/lib/creative/asset-upload";
 import { toEditorAsset, type EditorAsset } from "@/lib/creative/editor-asset";
-import { uploadResumable } from "@/lib/creative/resumable-upload";
+import { uploadInParts } from "@/lib/creative/multipart-upload";
 
 /** What the browser can tell about a file before it is uploaded. */
 interface MediaProbe {
@@ -93,7 +93,7 @@ function uploadEta(progress: { sent: number; total: number; startedAt: number })
 /** Storage errors are written for developers; this is what the person needs to know. */
 function uploadErrorMessage(message: string): string {
   if (/maximum allowed size|too large|payload|\b413\b/i.test(message)) {
-    return "This file is bigger than the storage's per-file limit. Raise it in Supabase under Storage → Settings, or upload a compressed version.";
+    return "Storage refused this file as too large.";
   }
   return message;
 }
@@ -189,26 +189,32 @@ export default function CreativeAssetForm({
       const ticket = await fetch("/api/creative/assets/upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, filename: file.name }),
+        body: JSON.stringify({ projectId, filename: file.name, contentType: file.type, size: file.size }),
       });
       const issued = await ticket.json();
       if (!ticket.ok) throw new Error(issued.error ?? "Could not start the upload");
 
       // The file goes straight from the browser into the user's own folder,
-      // in resumable chunks, so progress is real and any size gets through.
+      // in parts, so progress is real and any size gets through.
       const controller = new AbortController();
       abort.current = controller;
       const startedAt = Date.now();
       setProgress({ sent: 0, total: file.size, startedAt });
       try {
-        await uploadResumable({
+        await uploadInParts({
           file,
-          bucket: issued.bucket,
-          path: issued.path,
+          partSize: issued.partSize,
+          partUrls: issued.partUrls,
           signal: controller.signal,
           onProgress: (sent, total) => setProgress({ sent, total, startedAt }),
         });
       } catch (cause) {
+        // Leave nothing half-written behind.
+        void fetch("/api/creative/assets/upload-url", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: issued.path, uploadId: issued.uploadId }),
+        }).catch(() => undefined);
         if (cause instanceof DOMException && cause.name === "AbortError") throw new Error("Upload cancelled.");
         throw new Error(uploadErrorMessage(cause instanceof Error ? cause.message : String(cause)));
       } finally {
@@ -222,6 +228,7 @@ export default function CreativeAssetForm({
         body: JSON.stringify({
           projectId,
           path: issued.path,
+          uploadId: issued.uploadId,
           filename: file.name,
           contentType: file.type,
           size: file.size,

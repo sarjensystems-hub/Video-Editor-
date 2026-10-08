@@ -4,7 +4,7 @@ import { handleCreativeMcpTool, CREATIVE_MCP_TOOL_NAMES, type CreativeMcpToolNam
 import { uploadMcpUserImage } from "@/lib/mcp-image-upload";
 import { authenticateMcpBearer, type McpUserContext } from "@/lib/mcp-oauth";
 import { withUserOpenRouterKey } from "@/lib/openrouter-key";
-import { runWithStorageClient } from "@/lib/storage";
+import { runWithMediaOrigin } from "@/lib/storage";
 import { oauthChallenge } from "@/lib/mcp-oauth-core";
 
 export const runtime = "nodejs";
@@ -46,10 +46,10 @@ export async function POST(request: Request) {
 
   // Every tool call — including the rendering that continues after this
   // response — generates on the connected account's own OpenRouter key, and
-  // stores what it generates with the connected account's own client. Neither
-  // can come from cookies: an MCP request has none.
+  // records what it stores under this request's own domain, which the work
+  // that outlives the response could not otherwise ask for.
   return withUserOpenRouterKey(context.supabase, context.user.id, () =>
-    runWithStorageClient(context.supabase, () => handleAuthenticatedPost(request, context)),
+    runWithMediaOrigin(new URL(request.url).origin, () => handleAuthenticatedPost(request, context)),
   );
 }
 

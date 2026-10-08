@@ -1,6 +1,7 @@
 import { Sandbox } from "@vercel/sandbox";
 import { renderMediaOnVercel, renderStillOnVercel } from "@remotion/vercel";
 import { uploadAnyBytes } from "../storage";
+import { getObjectText } from "../b2";
 import { planContactSheetLayout, type ContactSheetLayout } from "./contact-sheet";
 import { resolveCreativeFrameAtTime } from "./frame-time";
 import { resolveCreativeRenderOptions, type CreativeRenderWindowOptions } from "./render-options";
@@ -110,14 +111,17 @@ export interface CreativeRenderAdapter {
   stopDetached(handle: CreativeDetachedRenderHandle): Promise<void>;
 }
 
-const CREATIVE_RENDER_SNAPSHOTS_BUCKET = "creative-render-snapshots";
+/**
+ * Where the build records which Vercel Sandbox snapshot this deployment
+ * renders with: one small JSON file per deployment, outside every user's
+ * folder. Written by scripts/create-creative-render-snapshot.mjs.
+ */
+export const CREATIVE_RENDER_SNAPSHOT_PREFIX = "_system/render-snapshots/";
 
-function snapshotMetadataUrl() {
+function snapshotMetadataKey() {
   const deploymentId = process.env.VERCEL_DEPLOYMENT_ID;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
   if (!deploymentId) throw new Error("VERCEL_DEPLOYMENT_ID is unavailable");
-  if (!supabaseUrl) throw new Error("NEXT_PUBLIC_SUPABASE_URL is unavailable");
-  return `${supabaseUrl}/storage/v1/object/public/${CREATIVE_RENDER_SNAPSHOTS_BUCKET}/${deploymentId}.json`;
+  return `${CREATIVE_RENDER_SNAPSHOT_PREFIX}${deploymentId}.json`;
 }
 
 function positiveIntFromEnv(name: string, fallback: number): number {
@@ -189,11 +193,9 @@ async function mapWithConcurrency<T, R>(
 const RENDER_SANDBOX_TIMEOUT_MS = 45 * 60 * 1000;
 
 async function restoreCreativeRendererSandbox() {
-  const response = await fetch(snapshotMetadataUrl(), { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`Creative renderer snapshot metadata unavailable (${response.status})`);
-  }
-  const payload = (await response.json()) as { snapshotId?: string };
+  const text = await getObjectText(snapshotMetadataKey());
+  if (!text) throw new Error("Creative renderer snapshot metadata unavailable for this deployment");
+  const payload = JSON.parse(text) as { snapshotId?: string };
   if (!payload.snapshotId) throw new Error("Creative renderer snapshot metadata is invalid");
   const source = { type: "snapshot", snapshotId: payload.snapshotId } as const;
   try {

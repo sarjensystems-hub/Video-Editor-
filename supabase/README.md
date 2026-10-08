@@ -13,9 +13,9 @@ reference tables the earlier ones create.
 6. `add_mcp_oauth.sql` — the three tables that let ChatGPT and Claude sign in.
 7. `add_mcp_refresh_tokens.sql` — keeps those connections alive past an hour.
 8. `add_video_generations_mcp_oauth.sql` — lets video jobs be started over MCP.
-9. `add_storage_buckets.sql` — the two Supabase Storage buckets:
-   `article-images` for media, one folder per user, and
-   `creative-render-snapshots` for the render-cache metadata.
+9. `add_storage_buckets.sql` — historical: files now live in Backblaze B2
+   (see `lib/b2.ts`), so these Supabase Storage buckets are no longer used and
+   this file can be skipped on a new project.
 10. `add_user_api_keys.sql` — each account's own OpenRouter key, encrypted at
    rest. Without this table nobody can save a key, and nothing can generate.
 11. `add_creative_asset_class.sql` — what each asset is for (narration, music,
