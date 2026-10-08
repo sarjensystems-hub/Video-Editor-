@@ -133,9 +133,10 @@ function positiveIntFromEnv(name: string, fallback: number): number {
  * A 60-second 1080x1920 reel is 1800 frames. On the sandbox default of two
  * vCPUs that render took roughly ten minutes and was killed by every function
  * budget it ran under. Frame rendering is embarrassingly parallel, so the fix
- * is cores rather than patience.
+ * is cores rather than patience. Four is the most this team's plan grants;
+ * asking for more was refused on every render and fell back anyway.
  */
-const RENDER_SANDBOX_VCPUS = positiveIntFromEnv("CREATIVE_RENDER_VCPUS", 8);
+const RENDER_SANDBOX_VCPUS = positiveIntFromEnv("CREATIVE_RENDER_VCPUS", 4);
 
 /**
  * Concurrency follows the cores the sandbox was actually granted, not the ones

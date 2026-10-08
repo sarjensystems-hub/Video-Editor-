@@ -71,7 +71,7 @@ describe("creative still-frame render boundary", () => {
       return JSON.stringify({ snapshotId: "snap-1" });
     });
 
-    sandboxCreate.mockResolvedValue({ fs: { readFile }, stop: sandboxStop, vcpus: 8 });
+    sandboxCreate.mockResolvedValue({ fs: { readFile }, stop: sandboxStop, vcpus: 4 });
     readFile.mockImplementation(async () => pngBytes(1));
     renderStillOnVercel.mockImplementation(async ({ outputFile }: { outputFile: string }) => ({
       sandboxFilePath: outputFile,

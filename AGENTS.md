@@ -60,6 +60,11 @@
   redirects to a short-lived signed B2 URL. Never store a B2 URL itself.
 - Browser uploads go straight to B2 as multipart uploads with per-part signed
   URLs; nothing passes through a Vercel function, so there is no size cap.
+  That needs a bucket CORS rule allowing `s3_put` from the app's address,
+  which Backblaze's web console cannot create (it makes download-only rules).
+  It is set on the bucket already; a new domain needs it extended through
+  B2's native API (`b2_update_bucket`) with a key that has `writeBuckets` -
+  the app's own key deliberately does not.
 - Every file lives under `<userId>/<kind>/…`, built only by
   `lib/storage-paths.ts`; a guard test fails on a hand-built path, and deletes
   refuse any path outside the caller's own folder.

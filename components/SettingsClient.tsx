@@ -10,7 +10,6 @@ import { deleteSite } from "@/app/actions/sites";
 import { useRouter } from "next/navigation";
 import { cn } from "@/components/ui/cn";
 import ApiKeysCard from "@/components/settings/ApiKeysCard";
-import StorageSetupCard from "@/components/settings/StorageSetupCard";
 import type { OpenRouterKeyStatus } from "@/lib/openrouter-key";
 
 const TABS = [
@@ -100,12 +99,7 @@ export default function SettingsClient({ email, sites, activeSiteId, keyStatus }
       </nav>
 
       <div className="min-w-0 flex-1">
-        {activeTab === "keys" && (
-          <div className="grid gap-4">
-            <ApiKeysCard initialStatus={keyStatus} />
-            <StorageSetupCard />
-          </div>
-        )}
+        {activeTab === "keys" && <ApiKeysCard initialStatus={keyStatus} />}
 
         {activeTab === "appearance" && (
           <Card title="Appearance" hint="Choose how Studio looks. Saved automatically.">
