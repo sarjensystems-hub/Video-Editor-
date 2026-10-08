@@ -18,7 +18,7 @@ import type { CreativeDocument } from "./schema";
  * What stays, because something that survives still points at it:
  *   - a file another asset row, a generated video or another project's render
  *     uses. A promoted video is the common case — its asset shares the file
- *     shown on the Videos page, which must keep playing.
+ *     kept by its generation record, which must keep playing.
  *
  * Rows are deleted before files. If a file then fails to delete it is logged
  * and orphaned; the other order could leave a live row pointing at a file

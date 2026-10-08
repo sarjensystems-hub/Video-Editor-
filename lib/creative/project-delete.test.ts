@@ -96,7 +96,7 @@ describe("deleting a project with its files", () => {
     expect(tables.creative_assets.map((row) => row.id)).toContain("shared-asset");
   });
 
-  /** A promoted video shares its file with the Videos page entry. */
+  /** A promoted video shares its file with its generation record. */
   it("keeps a file a generated video still plays from", async () => {
     await deleteCreativeProjectWithFiles(fakeSupabase(tables), "user-1", "doomed");
     const urls = deleteUserFiles.mock.calls[0][1] as string[];

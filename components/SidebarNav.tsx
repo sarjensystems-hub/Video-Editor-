@@ -8,7 +8,6 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
-  Video,
   Images,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
@@ -27,7 +26,6 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: R
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
       { href: "/dashboard/creative-studio", label: "Creative Studio", icon: Clapperboard },
-      { href: "/dashboard/videos", label: "Videos", icon: Video },
       { href: "/dashboard/media", label: "Media", icon: Images },
     ],
   },

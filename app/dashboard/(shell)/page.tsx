@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Clapperboard, Film, KeyRound, Plus, Video } from "lucide-react";
+import { ArrowUpRight, Clapperboard, Film, Images, KeyRound, Plus } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import McpConnectCard from "@/components/dashboard/McpConnectCard";
 import { createClient } from "@/lib/supabase/server";
@@ -26,9 +26,9 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const [projects, videos, recentRenders, keyStatus] = await Promise.all([
+  const [projects, finishedRenders, recentRenders, keyStatus] = await Promise.all([
     supabase.from("creative_projects").select("*", { count: "exact", head: true }).eq("user_id", user.id),
-    supabase.from("video_generations").select("*", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("creative_render_jobs").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "completed"),
     supabase
       .from("creative_render_jobs")
       .select("id, project_id, status, progress, output_url, updated_at")
@@ -101,7 +101,7 @@ export default async function DashboardPage() {
 
         <dl className="relative mt-8 grid grid-cols-3 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10">
           <Stat label="Projects" value={projects.count ?? 0} />
-          <Stat label="Generations" value={videos.count ?? 0} />
+          <Stat label="Renders" value={finishedRenders.count ?? 0} />
           <Stat label="Rendering" value={rendering} accent={rendering > 0} />
         </dl>
       </header>
@@ -116,10 +116,10 @@ export default async function DashboardPage() {
               blurb="Layered projects with revisions, frame previews and MP4 export."
             />
             <NavCard
-              href="/dashboard/videos"
-              icon={Video}
-              title="Videos"
-              blurb="Generative footage via Seedance 2.0 Fast, promotable into any project."
+              href="/dashboard/media"
+              icon={Images}
+              title="Media"
+              blurb="Everything in your storage: uploads, generated media and renders."
             />
           </div>
 

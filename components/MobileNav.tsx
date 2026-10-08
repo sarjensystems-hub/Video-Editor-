@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clapperboard, Images, LayoutDashboard, Settings, Video } from "lucide-react";
+import { Clapperboard, Images, LayoutDashboard, Settings } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import LogoutButton from "@/components/LogoutButton";
 import Sheet from "@/components/ui/Sheet";
@@ -12,7 +12,6 @@ import { cn } from "@/components/ui/cn";
 const TABS = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/creative-studio", label: "Studio", icon: Clapperboard },
-  { href: "/dashboard/videos", label: "Videos", icon: Video },
   { href: "/dashboard/media", label: "Media", icon: Images },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];

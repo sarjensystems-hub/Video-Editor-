@@ -18,7 +18,6 @@ export async function deleteMediaFiles(paths: string[]): Promise<DeleteMediaResu
   try {
     const result = await deleteMediaPaths(supabase, user.id, paths);
     revalidatePath("/dashboard/media");
-    revalidatePath("/dashboard/videos");
     return { ok: true, ...result };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not delete those files" };
