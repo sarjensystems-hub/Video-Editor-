@@ -227,7 +227,7 @@ const CREATIVE_MCP_TOOLS = [
   {
     name: "studio_list_creative_projects",
     description:
-      "List your Creative Studio projects, newest first, with the project_id every other creative tool needs. Call this first in a new conversation to find work you already started, rather than creating a duplicate project. Returns identity and shape only — title, status, current revision, last update, rendered duration and scene count — not the documents themselves; read one with studio_get_creative_project.",
+      "List your Creative Studio projects, newest first, with the project_id every other creative tool needs. Call this first in a new conversation to find work you already started, rather than creating a duplicate project. Returns identity and shape only — title, status, current revision, last update, rendered duration, scene count and asset counts by asset_class (with how many the user uploaded) — not the documents themselves; read one with studio_get_creative_project. When the user names a project, match its title; if several share it (new projects start as \"Untitled creative\"), use the asset counts and update times to pick the one holding what they describe, and ask if it is still ambiguous.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

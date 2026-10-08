@@ -78,6 +78,8 @@ export async function listRuntimeCreativeProjects(
   updatedAt: string | null;
   durationMs: number | null;
   sceneCount: number | null;
+  /** How many assets of each class the project holds, and how many were uploaded. */
+  assets: { total: number; uploaded: number; byClass: Record<string, number> };
 }>> {
   const { data, error } = await context.supabase
     .from("creative_projects")
@@ -86,6 +88,27 @@ export async function listRuntimeCreativeProjects(
     .order("updated_at", { ascending: false })
     .limit(Math.max(1, Math.min(100, Math.round(limit))));
   if (error) throw new Error(error.message);
+
+  // Projects are often still called "Untitled creative", so a caller told
+  // "use the video I uploaded" needs to see which project actually holds one.
+  const ids = (data ?? []).map((row) => String(row.id));
+  const counts = new Map<string, { total: number; uploaded: number; byClass: Record<string, number> }>();
+  if (ids.length) {
+    const { data: assetRows } = await context.supabase
+      .from("creative_assets")
+      .select("project_id, asset_class, source")
+      .eq("user_id", context.userId)
+      .in("project_id", ids);
+    for (const asset of assetRows ?? []) {
+      const key = String(asset.project_id);
+      const entry = counts.get(key) ?? { total: 0, uploaded: 0, byClass: {} };
+      entry.total += 1;
+      if (asset.source === "upload") entry.uploaded += 1;
+      const assetClass = String(asset.asset_class ?? "other");
+      entry.byClass[assetClass] = (entry.byClass[assetClass] ?? 0) + 1;
+      counts.set(key, entry);
+    }
+  }
 
   return (data ?? []).map((row) => {
     // A stored document that fails validation must not break the listing —
@@ -100,6 +123,7 @@ export async function listRuntimeCreativeProjects(
       updatedAt: row.updated_at ? String(row.updated_at) : null,
       durationMs: scenes ? getCreativeDurationMs(document as CreativeDocument) : null,
       sceneCount: scenes ? scenes.length : null,
+      assets: counts.get(String(row.id)) ?? { total: 0, uploaded: 0, byClass: {} },
     };
   });
 }

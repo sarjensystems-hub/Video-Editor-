@@ -953,6 +953,7 @@ export async function handleCreativeMcpTool(
         updated_at: project.updatedAt,
         duration_ms: project.durationMs,
         scene_count: project.sceneCount,
+        assets: { total: project.assets.total, uploaded: project.assets.uploaded, by_class: project.assets.byClass },
       })),
       // The other call that opens a session - a caller resuming yesterday's
       // film lists before it reads. Same reason as on create.
