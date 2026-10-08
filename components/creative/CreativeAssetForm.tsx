@@ -205,7 +205,6 @@ export default function CreativeAssetForm({
           file,
           bucket: issued.bucket,
           path: issued.path,
-          token: issued.token,
           signal: controller.signal,
           onProgress: (sent, total) => setProgress({ sent, total, startedAt }),
         });

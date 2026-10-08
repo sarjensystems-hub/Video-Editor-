@@ -7,12 +7,18 @@
  * upload resumes where it stopped. Nothing here caps the size; the only limit
  * left is the per-file maximum set in the Supabase project.
  *
- * Authorisation is the signed upload token the server issued for one exact
- * path inside the user's own folder (`x-signature`), so the browser can only
- * write where the server said it may.
+ * Authorisation is the signed-in user's own session token, as Supabase's
+ * resumable guide prescribes. The bucket policy lets that token write only
+ * inside the user's own folder, the server chose the exact path, and the
+ * server checks that path again before recording the asset.
+ *
+ * The project's publishable key cannot stand in for it: the direct storage
+ * host expects a JWT in Authorization, and a publishable key is not one -
+ * that is the "Invalid Compact JWS" the first version of this failed with.
  */
 
 import { Upload } from "tus-js-client";
+import { createClient } from "@/lib/supabase/client";
 
 /** Supabase requires exactly this chunk size for resumable uploads. */
 const CHUNK_BYTES = 6 * 1024 * 1024;
@@ -28,16 +34,24 @@ export function resumableEndpoint(projectUrl: string): string {
   return `${url.protocol}//${host}/storage/v1/upload/resumable`;
 }
 
-export function uploadResumable(input: {
+export async function uploadResumable(input: {
   file: File;
   bucket: string;
   path: string;
-  token: string;
   onProgress: (sentBytes: number, totalBytes: number) => void;
   signal?: AbortSignal;
 }): Promise<void> {
   const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const apiKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabase = createClient();
+  // Read per request, not once: a session token lasts an hour and a large
+  // upload can outlive it. getSession refreshes it when it is close to expiry.
+  const accessToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error("Your session has expired. Sign in again to upload.");
+    return session.access_token;
+  };
+  await accessToken();
   return new Promise((resolve, reject) => {
     const upload = new Upload(input.file, {
       endpoint: resumableEndpoint(projectUrl),
@@ -45,7 +59,10 @@ export function uploadResumable(input: {
       chunkSize: CHUNK_BYTES,
       uploadDataDuringCreation: true,
       removeFingerprintOnSuccess: true,
-      headers: { apikey: apiKey, "x-signature": input.token },
+      headers: { apikey: apiKey },
+      onBeforeRequest: async (request) => {
+        request.setHeader("authorization", `Bearer ${await accessToken()}`);
+      },
       metadata: {
         bucketName: input.bucket,
         objectName: input.path,
