@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSiteId } from "@/lib/active-site";
+import { getActiveSiteId, workspaceScopeFilter } from "@/lib/active-site";
 import { createEmptyCreativeDocument } from "@/lib/creative/defaults";
 import { CREATIVE_CANVAS_FORMATS, resolveCanvasFormat } from "@/lib/creative/canvas-formats";
 import type { CreativeDocument } from "@/lib/creative/schema";
@@ -215,13 +215,13 @@ export async function listCreativeProjects(folder?: string) {
   const auth = await authenticatedClient();
   if (!auth) return [];
   const { supabase, user } = auth;
-  const siteId = await getActiveSiteId();
+  const scope = workspaceScopeFilter(await getActiveSiteId());
   const query = supabase
     .from("creative_projects")
     .select("id, title, status, created_at, updated_at, current_revision_id, folder_id")
     .eq("user_id", user.id)
     .order("updated_at", { ascending: false });
-  if (siteId) query.eq("site_id", siteId);
+  if (scope) query.or(scope);
   if (folder === "unfiled") query.is("folder_id", null);
   else if (folder) query.eq("folder_id", folder);
   const { data } = await query;
@@ -284,13 +284,13 @@ export async function listCreativeFolders() {
   const auth = await authenticatedClient();
   if (!auth) return [];
   const { supabase, user } = auth;
-  const siteId = await getActiveSiteId();
+  const scope = workspaceScopeFilter(await getActiveSiteId());
   const query = supabase
     .from("creative_folders")
     .select("id, name, created_at")
     .eq("user_id", user.id)
     .order("name", { ascending: true });
-  if (siteId) query.eq("site_id", siteId);
+  if (scope) query.or(scope);
   const { data } = await query;
   return data ?? [];
 }
