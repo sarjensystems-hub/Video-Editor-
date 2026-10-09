@@ -53,7 +53,14 @@ export async function POST(request: Request) {
     try {
       await completeMultipartUpload(path, body.uploadId, partCount, partEtags);
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 409 });
+      // Storage can finish joining the parts and still answer with an error
+      // (Tigris did: the file was whole in the bucket while completion said a
+      // part "could not be found"). The file itself is the truth: if it is
+      // there at the size the browser sent, the upload worked.
+      const landed = await headObject(path).catch(() => null);
+      if (!landed || landed.size !== Number(body.size)) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 409 });
+      }
     }
   }
   const stored = await headObject(path).catch(() => null);
