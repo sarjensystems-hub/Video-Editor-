@@ -127,9 +127,14 @@ export default async function DashboardPage() {
         </div>
 
         <section className="card h-fit p-5">
-          <h2 className="mb-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-faint">
-            <Film className="h-3.5 w-3.5" /> Recent renders
-          </h2>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-ink-faint">
+              <Film className="h-3.5 w-3.5" /> Recent renders
+            </h2>
+            <Link href="/dashboard/renders" className="text-[11px] font-bold text-fire hover:underline">
+              View all
+            </Link>
+          </div>
 
           {renders.length === 0 ? (
             <p className="text-xs leading-relaxed text-ink-faint">

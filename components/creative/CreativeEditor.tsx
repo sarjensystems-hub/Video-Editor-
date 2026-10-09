@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Check,
   ChevronLeft,
@@ -28,7 +27,7 @@ import Sheet from "@/components/ui/Sheet";
 import { EmptyNote, Panel } from "@/components/ui/Panel";
 import { cn } from "@/components/ui/cn";
 import { useIsDesktop } from "@/components/ui/media";
-import { deleteCreativeProject, saveCreativeProject } from "@/app/actions/creative-studio";
+import { saveCreativeProject } from "@/app/actions/creative-studio";
 import { createDefaultTransform } from "@/lib/creative/defaults";
 import type { CreativeDocument } from "@/lib/creative/schema";
 import {
@@ -95,9 +94,7 @@ export default function CreativeEditor({
   const [timeMs, setTimeMs] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const router = useRouter();
   const [overlay, setOverlay] = useState<OverlayName | null>(null);
   const [assetForm, setAssetForm] = useState<{ asset: EditorAsset | null; initialClass: CreativeAssetClass | null } | null>(null);
   const [railsOpen, setRailsOpen] = useState({ left: true, right: true });
@@ -205,24 +202,6 @@ export default function CreativeEditor({
     }
     setState((current) => markEditorSaved(current));
     setNotice(`Saved revision ${result.data.sequence}`);
-  };
-
-  const deleteProject = async () => {
-    if (
-      !window.confirm(
-        `Delete "${title}"? This permanently removes the project, its render history and its stored files. Media another project still uses is kept.`,
-      )
-    ) {
-      return;
-    }
-    setDeleting(true);
-    const result = await deleteCreativeProject(projectId);
-    if (!result.ok) {
-      setDeleting(false);
-      setNotice(result.error);
-      return;
-    }
-    router.push("/dashboard/creative-studio");
   };
 
   const appendAssets = useCallback((next: EditorAsset[]) => {
@@ -361,16 +340,6 @@ export default function CreativeEditor({
         >
           <ChevronLeft className="h-5 w-5" />
         </Link>
-        <IconButton
-          label="Delete project"
-          size="sm"
-          variant="ghost"
-          className="!border-transparent !text-danger"
-          disabled={deleting}
-          onClick={deleteProject}
-        >
-          <Trash2 className="h-4 w-4" />
-        </IconButton>
 
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-bold leading-tight text-ink">{title}</h1>

@@ -191,9 +191,17 @@ export async function listObjects(prefix: string): Promise<Array<{ key: string; 
 }
 
 /** A time-limited URL that reads `path` with no other credential. */
-export async function presignGet(path: string, expiresSeconds: number): Promise<string> {
+export async function presignGet(
+  path: string,
+  expiresSeconds: number,
+  options: { downloadName?: string } = {},
+): Promise<string> {
   const url = new URL(objectUrl(path));
   url.searchParams.set("X-Amz-Expires", String(Math.round(expiresSeconds)));
+  // Signed with the rest, so storage itself answers "save as" rather than play.
+  if (options.downloadName) {
+    url.searchParams.set("response-content-disposition", `attachment; filename="${options.downloadName}"`);
+  }
   const signed = await config().client.sign(url.toString(), { method: "GET", aws: { signQuery: true } });
   return signed.url;
 }

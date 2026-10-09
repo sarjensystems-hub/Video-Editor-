@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, FileQuestion, Lock, Music, Trash2, Type } from "lucide-react";
@@ -9,6 +9,7 @@ import type { MediaItem, MediaType } from "@/lib/media-library";
 import { Button, IconButton } from "@/components/ui/Button";
 import Segmented from "@/components/ui/Segmented";
 import { cn } from "@/components/ui/cn";
+import LazyVideo from "./LazyVideo";
 
 type Filter = "all" | "video" | "image" | "audio" | "unused";
 
@@ -339,42 +340,5 @@ function Preview({ item }: { item: MediaItem }) {
         <audio src={item.url} controls preload="none" className="h-8 w-full" />
       )}
     </div>
-  );
-}
-
-/**
- * A video that fetches nothing until it scrolls near the viewport, and then
- * only enough to show its first frame. The whole file streams on play.
- */
-function LazyVideo({ src }: { src: string }) {
-  const ref = useRef<HTMLVideoElement>(null);
-  const [near, setNear] = useState(false);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || near) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setNear(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "200px" },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [near]);
-
-  return (
-    <video
-      ref={ref}
-      src={near ? `${src}#t=0.1` : undefined}
-      preload={near ? "metadata" : "none"}
-      controls={near}
-      muted
-      playsInline
-      className="h-full w-full bg-black object-contain"
-    />
   );
 }

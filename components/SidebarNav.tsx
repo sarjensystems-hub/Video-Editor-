@@ -9,13 +9,14 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Images,
+  Film,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import LogoutButton from "@/components/LogoutButton";
 import { cn } from "@/components/ui/cn";
 
 /**
- * Nav is grouped rather than flat. Four items do not need sections for
+ * Nav is grouped rather than flat. Five items do not need sections for
  * findability, but they do need them for meaning: "Create" is where work
  * happens, "Account" is where settings live, and the split stops Settings
  * reading as a fourth creative surface.
@@ -26,6 +27,7 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: R
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
       { href: "/dashboard/creative-studio", label: "Creative Studio", icon: Clapperboard },
+      { href: "/dashboard/renders", label: "Renders", icon: Film },
       { href: "/dashboard/media", label: "Media", icon: Images },
     ],
   },

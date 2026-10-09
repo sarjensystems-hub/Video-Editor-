@@ -19,7 +19,16 @@ const REDIRECT_CACHE_SECONDS = 60 * 60;
  * The signed URL outlives the cached redirect by an hour, so a video that
  * keeps seeking within one viewing never meets an expired link.
  */
-async function redirectToFile(params: Promise<{ path: string[] }>): Promise<Response> {
+/**
+ * `?download=<name>` saves the file under that name instead of opening it. The
+ * name lands inside a signed header, so only plain filename characters survive.
+ */
+function downloadFileName(requested: string | null): string | undefined {
+  const name = requested?.replace(/[^A-Za-z0-9 ._()-]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
+  return name ? name : undefined;
+}
+
+async function redirectToFile(request: Request, params: Promise<{ path: string[] }>): Promise<Response> {
   const { path } = await params;
   // Stored names only ever use [A-Za-z0-9._-], so decoding is a no-op for
   // them; it is tolerant only so a stray encoding cannot throw.
@@ -33,7 +42,8 @@ async function redirectToFile(params: Promise<{ path: string[] }>): Promise<Resp
   if (segments.length < 3 || segments.some((segment) => !segment || segment === "." || segment === "..")) {
     return new Response("Not found", { status: 404 });
   }
-  const url = await presignGet(segments.join("/"), SIGNED_SECONDS);
+  const downloadName = downloadFileName(new URL(request.url).searchParams.get("download"));
+  const url = await presignGet(segments.join("/"), SIGNED_SECONDS, { downloadName });
   return new Response(null, {
     status: 307,
     headers: {
@@ -43,10 +53,10 @@ async function redirectToFile(params: Promise<{ path: string[] }>): Promise<Resp
   });
 }
 
-export async function GET(_request: Request, { params }: { params: Promise<{ path: string[] }> }) {
-  return redirectToFile(params);
+export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  return redirectToFile(request, params);
 }
 
-export async function HEAD(_request: Request, { params }: { params: Promise<{ path: string[] }> }) {
-  return redirectToFile(params);
+export async function HEAD(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  return redirectToFile(request, params);
 }

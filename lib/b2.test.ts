@@ -42,6 +42,11 @@ describe("B2 requests", () => {
     expect(url.pathname).toBe("/studio-videos/user-1/images/x.png");
     expect(url.searchParams.get("X-Amz-Expires")).toBe("7200");
     expect(url.searchParams.get("X-Amz-Signature")).toMatch(/^[0-9a-f]{64}$/);
+    expect(url.searchParams.has("response-content-disposition")).toBe(false);
+
+    const download = new URL(await presignGet("user-1/renders/r.mp4", 60, { downloadName: "Launch film.mp4" }));
+    expect(download.searchParams.get("response-content-disposition")).toBe('attachment; filename="Launch film.mp4"');
+    expect(download.searchParams.get("X-Amz-Signature")).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("prefers Tigris when it is configured, with virtual-hosted addressing", async () => {
