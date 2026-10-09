@@ -255,24 +255,55 @@ async function listParts(path: string, uploadId: string): Promise<Array<{ partNu
   return parts.sort((a, b) => a.partNumber - b.partNumber);
 }
 
-/** Joins the uploaded parts into one file; refuses if any expected part is missing. */
-export async function completeMultipartUpload(path: string, uploadId: string, expectedParts: number): Promise<void> {
-  const parts = await listParts(path, uploadId);
-  if (parts.length !== expectedParts || parts.some((part, index) => part.partNumber !== index + 1)) {
-    throw new Error(`The upload is incomplete: ${parts.length} of ${expectedParts} parts arrived`);
+/**
+ * Joins the uploaded parts into one file.
+ *
+ * `reportedEtags` are the ETags storage returned to the browser for each part,
+ * in part order. They are used when every part has one, as S3 clients do.
+ * Tigris routes each part to the region nearest the sender, and completing
+ * from a server listing failed there with "part could not be found"; any part
+ * without a reported ETag falls back to the listing, which also catches a
+ * missing part before completion is attempted.
+ *
+ * A region that has not seen every part yet answers InvalidPart, so that is
+ * retried a few times with growing waits before giving up.
+ */
+export async function completeMultipartUpload(
+  path: string,
+  uploadId: string,
+  expectedParts: number,
+  reportedEtags: Array<string | null> = [],
+): Promise<void> {
+  let parts: Array<{ partNumber: number; etag: string }>;
+  if (reportedEtags.length === expectedParts && reportedEtags.every((etag) => etag)) {
+    parts = reportedEtags.map((etag, index) => ({ partNumber: index + 1, etag: etag as string }));
+  } else {
+    const listed = await listParts(path, uploadId);
+    if (listed.length !== expectedParts || listed.some((part, index) => part.partNumber !== index + 1)) {
+      throw new Error(`The upload is incomplete: ${listed.length} of ${expectedParts} parts arrived`);
+    }
+    parts = listed.map((part, index) => ({ partNumber: part.partNumber, etag: reportedEtags[index] || part.etag }));
   }
   const body =
     "<CompleteMultipartUpload>" +
     parts.map((part) => `<Part><PartNumber>${part.partNumber}</PartNumber><ETag>${escapeXml(part.etag)}</ETag></Part>`).join("") +
     "</CompleteMultipartUpload>";
-  const response = await sendWithBody(objectUrl(path, `?uploadId=${encodeURIComponent(uploadId)}`), "POST", body, {
-    "Content-Type": "application/xml",
-  });
-  const text = await response.text();
-  // S3 can answer 200 with an <Error> body when completion fails late.
-  if (!response.ok || /<Error>/.test(text)) {
-    throw new Error(`Storage could not finish the upload: ${text.match(/<Message>([^<]*)<\/Message>/)?.[1] ?? response.status}`);
+
+  const waits = [0, 2000, 4000, 8000];
+  let lastMessage = "";
+  for (const wait of waits) {
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    const response = await sendWithBody(objectUrl(path, `?uploadId=${encodeURIComponent(uploadId)}`), "POST", body, {
+      "Content-Type": "application/xml",
+    });
+    const text = await response.text();
+    // S3 can answer 200 with an <Error> body when completion fails late.
+    if (response.ok && !/<Error>/.test(text)) return;
+    const code = text.match(/<Code>([^<]*)<\/Code>/)?.[1] ?? "";
+    lastMessage = decodeXml(text.match(/<Message>([^<]*)<\/Message>/)?.[1] ?? String(response.status));
+    if (code !== "InvalidPart") break;
   }
+  throw new Error(`Storage could not finish the upload: ${lastMessage}`);
 }
 
 export async function abortMultipartUpload(path: string, uploadId: string): Promise<void> {

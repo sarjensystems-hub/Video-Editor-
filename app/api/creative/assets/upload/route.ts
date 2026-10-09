@@ -43,12 +43,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "That upload path is not in your folder" }, { status: 403 });
   }
   const name = path.slice(path.lastIndexOf("/") + 1);
-  // Join the parts the browser sent. Which parts B2 actually holds is read
-  // from B2 itself, so a part that silently failed cannot be skipped.
+  // Join the parts the browser sent, using the ETags it was handed for each
+  // part. Without them (an older page), the parts are read back from storage.
   if (typeof body.uploadId === "string" && body.uploadId) {
     const { partCount } = planUploadParts(Number(body.size));
+    const partEtags = Array.isArray(body.partEtags)
+      ? body.partEtags.map((etag) => (typeof etag === "string" && etag.length <= 200 ? etag : null))
+      : [];
     try {
-      await completeMultipartUpload(path, body.uploadId, partCount);
+      await completeMultipartUpload(path, body.uploadId, partCount, partEtags);
     } catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 409 });
     }

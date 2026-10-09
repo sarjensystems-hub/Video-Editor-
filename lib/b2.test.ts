@@ -56,4 +56,42 @@ describe("B2 requests", () => {
     const signed = new URL(await presignGet("user-1/audio/v.mp3", 60));
     expect(signed.host).toBe("sarjen-studio.t3.storage.dev");
   });
+
+  it("finishes a multipart upload with the ETags the browser was given, without listing parts", async () => {
+    const { completeMultipartUpload } = await import("./b2");
+    await completeMultipartUpload("user-1/assets/v.mp4", "up-1", 2, ['"aaa"', '"bbb"']);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init.method).toBe("POST");
+    const sent = new TextDecoder().decode(calls[0].init.body as Uint8Array);
+    expect(sent).toContain("<PartNumber>1</PartNumber><ETag>&quot;aaa&quot;</ETag>");
+    expect(sent).toContain("<PartNumber>2</PartNumber><ETag>&quot;bbb&quot;</ETag>");
+  });
+
+  it("retries a completion that storage answers with InvalidPart", { timeout: 10_000 }, async () => {
+    let attempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      attempts += 1;
+      return attempts === 1
+        ? new Response("<Error><Code>InvalidPart</Code><Message>One or more of the specified parts could not be found.</Message></Error>", { status: 400 })
+        : new Response("<CompleteMultipartUploadResult/>", { status: 200 });
+    }));
+    const { completeMultipartUpload } = await import("./b2");
+    await expect(completeMultipartUpload("user-1/assets/v.mp4", "up-1", 1, ['"aaa"'])).resolves.toBeUndefined();
+    expect(attempts).toBe(2);
+  });
+
+  it("falls back to listing the parts when the browser could not read an ETag", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string | Request, init?: RequestInit) => {
+      const method = init?.method ?? (url instanceof Request ? url.method : "GET");
+      calls.push({ url: String(url instanceof Request ? url.url : url), init: { ...init, method } });
+      if (method === "GET") {
+        return new Response("<ListPartsResult><Part><PartNumber>1</PartNumber><ETag>&quot;listed&quot;</ETag></Part><IsTruncated>false</IsTruncated></ListPartsResult>");
+      }
+      return new Response("<CompleteMultipartUploadResult/>", { status: 200 });
+    }));
+    const { completeMultipartUpload } = await import("./b2");
+    await completeMultipartUpload("user-1/assets/v.mp4", "up-1", 1, [null]);
+    const complete = calls.find((call) => call.init.method === "POST")!;
+    expect(new TextDecoder().decode(complete.init.body as Uint8Array)).toContain("&quot;listed&quot;");
+  });
 });

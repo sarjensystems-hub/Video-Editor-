@@ -11,7 +11,8 @@
 const CONCURRENT_PARTS = 3;
 const PART_ATTEMPTS = 4;
 
-function sendPart(url: string, blob: Blob, onBytes: (sent: number) => void, signal: AbortSignal): Promise<void> {
+/** Sends one part and resolves with the ETag storage gave it, when the page may read it. */
+function sendPart(url: string, blob: Blob, onBytes: (sent: number) => void, signal: AbortSignal): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
@@ -20,7 +21,10 @@ function sendPart(url: string, blob: Blob, onBytes: (sent: number) => void, sign
       if (event.loaded > 0) sentAny = true;
       onBytes(event.loaded);
     };
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Storage refused a part (${xhr.status})`)));
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve(xhr.getResponseHeader("ETag"))
+        : reject(new Error(`Storage refused a part (${xhr.status})`));
     // A request that fails before a single byte is sent never reached
     // storage: a firewall or web filter blocking the storage address (*.storage.dev), or the
     // bucket's CORS rule not covering this site's address.
@@ -45,8 +49,12 @@ export async function uploadInParts(input: {
   partUrls: string[];
   onProgress: (sentBytes: number, totalBytes: number) => void;
   signal: AbortSignal;
-}): Promise<void> {
+}): Promise<Array<string | null>> {
   const { file, partSize, partUrls, signal } = input;
+  // Each part's ETag, in part order. Completing with these - rather than with
+  // a listing the server makes afterwards - is what S3 clients do, and is
+  // what a storage provider that routes uploads to the nearest region needs.
+  const etags = new Array<string | null>(partUrls.length).fill(null);
   const sentPerPart = new Array<number>(partUrls.length).fill(0);
   const report = () => input.onProgress(Math.min(file.size, sentPerPart.reduce((sum, value) => sum + value, 0)), file.size);
   let next = 0;
@@ -58,7 +66,7 @@ export async function uploadInParts(input: {
       for (let attempt = 1; ; attempt++) {
         if (signal.aborted) throw new DOMException("Upload cancelled", "AbortError");
         try {
-          await sendPart(partUrls[index], blob, (sent) => {
+          etags[index] = await sendPart(partUrls[index], blob, (sent) => {
             sentPerPart[index] = sent;
             report();
           }, signal);
@@ -78,4 +86,5 @@ export async function uploadInParts(input: {
 
   report();
   await Promise.all(Array.from({ length: Math.min(CONCURRENT_PARTS, partUrls.length) }, worker));
+  return etags;
 }

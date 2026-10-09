@@ -200,8 +200,9 @@ export default function CreativeAssetForm({
       abort.current = controller;
       const startedAt = Date.now();
       setProgress({ sent: 0, total: file.size, startedAt });
+      let partEtags: Array<string | null> = [];
       try {
-        await uploadInParts({
+        partEtags = await uploadInParts({
           file,
           partSize: issued.partSize,
           partUrls: issued.partUrls,
@@ -229,6 +230,7 @@ export default function CreativeAssetForm({
           projectId,
           path: issued.path,
           uploadId: issued.uploadId,
+          partEtags,
           filename: file.name,
           contentType: file.type,
           size: file.size,
