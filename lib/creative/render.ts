@@ -1,7 +1,7 @@
 import { Sandbox } from "@vercel/sandbox";
 import { renderMediaOnVercel, renderStillOnVercel } from "@remotion/vercel";
 import { uploadAnyBytes } from "../storage";
-import { getObjectText } from "../b2";
+import { getObjectText, headObject, presignPut } from "../b2";
 import { planContactSheetLayout, type ContactSheetLayout } from "./contact-sheet";
 import { resolveCreativeFrameAtTime } from "./frame-time";
 import { resolveCreativeRenderOptions, type CreativeRenderWindowOptions } from "./render-options";
@@ -149,14 +149,17 @@ const RENDER_SANDBOX_VCPUS = positiveIntFromEnv("CREATIVE_RENDER_VCPUS", 4);
  * Concurrency follows the cores the sandbox was actually granted, not the ones
  * that were asked for: the request can be refused and fall back to the default
  * allocation, and six browser workers on two cores thrash rather than render.
- * Two cores are held back for the encoder, which Remotion runs alongside the
- * browser workers rather than after them.
+ * One core is held back for the encoder, which Remotion runs alongside the
+ * browser workers rather than after them. Two were, but a 76-second render's
+ * log showed the encoder idling behind the frame workers at about one frame a
+ * second: drawing frames is the bottleneck, and the sandbox's 45-minute limit
+ * is the ceiling it has to fit under.
  */
 function renderConcurrencyFor(sandbox: { vcpus?: number }): number {
   if (process.env.CREATIVE_RENDER_CONCURRENCY) {
     return positiveIntFromEnv("CREATIVE_RENDER_CONCURRENCY", 1);
   }
-  return Math.max(1, (sandbox.vcpus ?? RENDER_SANDBOX_VCPUS) - 2);
+  return Math.max(1, (sandbox.vcpus ?? RENDER_SANDBOX_VCPUS) - 1);
 }
 
 /**
@@ -295,6 +298,45 @@ async function compositeContactSheet(
   return new Uint8Array(sheet);
 }
 
+/**
+ * Runs alongside a detached render: waits for the renderer to report "done",
+ * then PUTs the MP4 to storage through a signed URL and leaves a marker the
+ * next poll reads. Nothing from the URL reaches the shell's parser; it is
+ * passed in the environment.
+ */
+async function startOutputUploader(sandbox: Sandbox, outputFile: string, outputKey: string): Promise<void> {
+  const putUrl = await presignPut(outputKey, 3 * 60 * 60);
+  const script = `
+for i in $(seq 1 1800); do
+  if grep -q '"stage":"done"' /vercel/sandbox/progress.json 2>/dev/null && [ -s "$OUT" ]; then
+    if curl -sS --fail -o /dev/null --retry 3 -X PUT -H "Content-Type: video/mp4" --upload-file "$OUT" "$PUT"; then
+      echo uploaded > /tmp/studio-output-uploaded
+    else
+      echo failed > /tmp/studio-output-uploaded
+    fi
+    exit 0
+  fi
+  grep -q '"stage":"error"' /vercel/sandbox/progress.json 2>/dev/null && exit 0
+  sleep 2
+done`;
+  await sandbox.runCommand({ cmd: "bash", args: ["-c", script], env: { OUT: outputFile, PUT: putUrl }, detached: true });
+}
+
+/** The render's output as stored, when the sandbox stored it itself. */
+async function storedOutput(outputKey: string): Promise<CreativeDetachedRenderStatus | null> {
+  const head = await headObject(outputKey).catch(() => null);
+  if (!head || head.size <= 0) return null;
+  const { mediaUrl } = await import("../storage");
+  return {
+    status: "completed",
+    progress: 1,
+    url: await mediaUrl(outputKey),
+    contentType: head.contentType || "video/mp4",
+    sizeBytes: head.size,
+    renderer: "remotion-vercel",
+  };
+}
+
 export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapter {
   async startDetached(request: CreativeRenderRequest): Promise<CreativeDetachedRenderHandle> {
     assertValidDocument(request.document);
@@ -350,6 +392,12 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
       });
       const command = captured as { cmdId: string } | null;
       if (!command?.cmdId) throw new Error("Renderer did not return a detached command id");
+      // The render stores its own output the moment it finishes. Otherwise
+      // the MP4 only left the sandbox when someone polled, and a render
+      // nobody polled before the sandbox timed out was lost whole.
+      await startOutputUploader(sandbox, outputFile, request.outputKey).catch((error) => {
+        console.warn("[creative-render] could not start the output uploader; a poll will upload instead", error);
+      });
       return {
         sandboxId: sandbox.name,
         cmdId: command.cmdId,
@@ -368,6 +416,9 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
     try {
       sandbox = await Sandbox.get({ name: handle.sandboxId, resume: true });
     } catch {
+      // The sandbox is gone, but the render may have stored its output first.
+      const stored = await storedOutput(handle.outputKey);
+      if (stored) return stored;
       return { status: "failed", progress: 0, error: "Render sandbox expired before producing output." };
     }
     let command: Awaited<ReturnType<Sandbox["getCommand"]>>;
@@ -407,6 +458,12 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
         phase: stage,
         estimatedCompletionMs: estimateRenderCompletionMs(handle.startedAtMs, overallProgress),
       };
+    }
+    // Usually the sandbox has already stored the MP4 itself.
+    const uploaded = await sandbox.fs.readFile("/tmp/studio-output-uploaded", "utf8").catch(() => null);
+    if (uploaded && String(uploaded).trim() === "uploaded") {
+      const stored = await storedOutput(handle.outputKey);
+      if (stored) return stored;
     }
     const bytes = await sandbox.fs.readFile(handle.outputFile);
     const buffer = toBuffer(bytes as Uint8Array | ArrayBuffer);

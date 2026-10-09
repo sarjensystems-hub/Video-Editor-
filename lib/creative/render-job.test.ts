@@ -86,6 +86,18 @@ describe("isRenderJobStale", () => {
     expect(isRenderJobStale({ status: "failed", updated_at: at(-86_400_000) }, NOW)).toBe(false);
   });
 
+  it("judges a detached render by its sandbox's lifetime, not by when it was last polled", () => {
+    const detached = (startedAgoMs: number) => ({
+      status: "rendering",
+      updated_at: at(-40 * 60_000),
+      metadata: { detached_render: { startedAtMs: NOW - startedAgoMs } },
+    });
+    // 40 minutes unpolled, sandbox still alive: not stale.
+    expect(isRenderJobStale(detached(40 * 60_000), NOW)).toBe(false);
+    // Past the sandbox's lifetime: stale.
+    expect(isRenderJobStale(detached(51 * 60_000), NOW)).toBe(true);
+  });
+
   it("does not guess when there is no usable timestamp", () => {
     expect(isRenderJobStale({ status: "rendering" }, NOW)).toBe(false);
     expect(isRenderJobStale({ status: "rendering", updated_at: "not-a-date" }, NOW)).toBe(false);

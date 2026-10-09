@@ -92,8 +92,20 @@ export async function updateClaimedRenderJob(
  * @returns true when a running job has gone silent long enough that the worker
  * is provably gone. Completed and failed jobs are never stale — they are done.
  */
+/**
+ * How long a detached render's sandbox can possibly live (its 45-minute
+ * timeout) plus a margin. Until then the sandbox itself is the truth, and a
+ * poll asks it; the job row only moves when someone polls, so its silence
+ * means nobody looked, not that the render died.
+ */
+export const DETACHED_RENDER_LIFETIME_MS = 50 * 60 * 1000;
+
 export function isRenderJobStale(job: RenderJobHeartbeat, nowMs: number): boolean {
   if (!isRenderJobRunning(job.status)) return false;
+  const detached = job.metadata?.detached_render as { startedAtMs?: unknown } | undefined;
+  if (detached && typeof detached.startedAtMs === "number") {
+    return nowMs - detached.startedAtMs > DETACHED_RENDER_LIFETIME_MS;
+  }
   const beat = job.updated_at ?? job.started_at;
   if (!beat) return false;
   const beatMs = Date.parse(beat);

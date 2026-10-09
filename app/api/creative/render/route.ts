@@ -59,8 +59,12 @@ export async function GET(request: Request) {
   // A job whose worker was killed has nothing left to close it out, so the
   // history is where it finally reads as failed rather than forever rendering.
   const now = Date.now();
+  // A detached render is left as it is: its row only moves when it is polled,
+  // so the list cannot tell a quiet render from a dead one. The panel resumes
+  // polling whatever reads as running, and that poll asks the sandbox (or the
+  // stored output) for the truth.
   const jobs = (data ?? []).map((job) =>
-    isRenderJobStale(job, now)
+    isRenderJobStale(job, now) && !(job.metadata as Record<string, unknown> | null)?.detached_render
       ? { ...job, status: "failed", error: RENDER_JOB_STALE_MESSAGE }
       : job,
   );
