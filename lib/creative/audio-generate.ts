@@ -14,9 +14,10 @@ import { appUrl } from "@/lib/app-url";
 import { resolveAudioContainer, audioContentTypeFor, sniffAudioContainer, wrapPcmInWav } from "./audio-format";
 import {
   DEFAULT_MUSIC_MODEL,
-  DEFAULT_SPEECH_MODEL,
-  SPEECH_PCM_FORMAT,
-  SPEECH_RESPONSE_FORMAT,
+  DEFAULT_SPEECH_MODEL_ID,
+  SPEECH_MODELS,
+  type SpeechModelConfig,
+  type SpeechModelId,
 } from "./audio-workers";
 
 const API_BASE = "https://openrouter.ai/api/v1";
@@ -74,17 +75,19 @@ function isEmptyAudioStream(detail: string): boolean {
 export async function generateSpeechBytes(input: {
   text: string;
   voice: string;
-  model?: string;
+  model?: SpeechModelId;
   speed?: number;
 }): Promise<GeneratedAudio> {
+  const config: SpeechModelConfig = SPEECH_MODELS[input.model ?? DEFAULT_SPEECH_MODEL_ID];
+  const emptyMessage = config.pcm ? EMPTY_SPEECH_MESSAGE : "Speech generation returned no audio.";
   const request: RequestInit = {
     method: "POST",
     headers: { ...(await authHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: input.model ?? DEFAULT_SPEECH_MODEL,
+      model: config.slug,
       input: input.text,
       voice: input.voice,
-      response_format: SPEECH_RESPONSE_FORMAT,
+      response_format: config.responseFormat,
       ...(input.speed === undefined ? {} : { speed: input.speed }),
     }),
   };
@@ -96,7 +99,7 @@ export async function generateSpeechBytes(input: {
     // An empty audio stream is deterministic, not transient, so the retry is
     // spent for nothing and the caller waits twice as long to learn the same
     // thing. Measured: the same input returns it on every attempt.
-    if (isEmptyAudioStream(detail)) throw new Error(EMPTY_SPEECH_MESSAGE);
+    if (isEmptyAudioStream(detail)) throw new Error(emptyMessage);
     if (response.status < 500 || attempt === 1) {
       throw new Error(`Speech generation failed (${response.status}): ${detail.slice(0, 500)}`);
     }
@@ -106,7 +109,7 @@ export async function generateSpeechBytes(input: {
   const raw = Buffer.from(await response.arrayBuffer());
   // Same condition, caught here instead when the provider returns 200 with a
   // zero-length body and OpenRouter passes it through rather than flagging it.
-  if (raw.byteLength <= 0) throw new Error(EMPTY_SPEECH_MESSAGE);
+  if (raw.byteLength <= 0) throw new Error(emptyMessage);
 
   // Headerless PCM is the one thing the sniffer cannot recognise, so it would
   // fall through to the "mp3" default and be stored as .mp3 over bytes that are
@@ -114,8 +117,8 @@ export async function generateSpeechBytes(input: {
   // a supported codec downstream. Guarded by a sniff so that a provider which
   // ignores the pcm request and returns a real container is passed through
   // untouched rather than double-wrapped.
-  const bytes = sniffAudioContainer(raw) === null
-    ? wrapPcmInWav(raw, SPEECH_PCM_FORMAT)
+  const bytes = config.pcm && sniffAudioContainer(raw) === null
+    ? wrapPcmInWav(raw, config.pcm)
     : raw;
 
   return {

@@ -117,19 +117,20 @@ export async function promoteCreativeVideoAsset(
  */
 export async function generateCreativeSpeechAsset(
   context: CreativeRuntimeContext,
-  input: { projectId: string; text: string; transcript?: string; language?: string; voice?: string; label?: string },
+  input: { projectId: string; text: string; transcript?: string; language?: string; voice?: string; model?: string; label?: string },
 ) {
   const project = await getRuntimeCreativeProject(context, input.projectId);
   if (!project) throw new Error("Project not found");
   const text = input.text.trim();
   if (!text) throw new Error("text is required");
 
-  const { normalizeSpeechLanguage, resolveSpeechVoice, DEFAULT_SPEECH_MODEL } = await import("./audio-workers");
+  const { normalizeSpeechLanguage, resolveSpeechSettings, SPEECH_MODELS } = await import("./audio-workers");
   const language = normalizeSpeechLanguage(input.language);
-  const voice = resolveSpeechVoice(input.voice);
+  const { model, voice } = resolveSpeechSettings(input.model, input.voice);
+  const modelSlug = SPEECH_MODELS[model].slug;
 
   const { generateSpeechBytes } = await import("./audio-generate");
-  const generated = await generateSpeechBytes({ text, voice });
+  const generated = await generateSpeechBytes({ text, voice, model });
 
   const label = input.label?.trim() || `voiceover-${language}`;
   const { uploadAnyBytes } = await import("../storage");
@@ -144,7 +145,7 @@ export async function generateCreativeSpeechAsset(
     projectId: input.projectId,
     kind: "audio",
     assetClass: "narration",
-    source: `${DEFAULT_SPEECH_MODEL.split("/").pop()}/openrouter`,
+    source: `${modelSlug.split("/").pop()}/openrouter`,
     url,
     mimeType: generated.contentType,
     filename: normalizeGeneratedAssetFilename(label, speechExtension),
@@ -152,7 +153,7 @@ export async function generateCreativeSpeechAsset(
     storagePath,
     metadata: {
       worker: "speech",
-      model: DEFAULT_SPEECH_MODEL,
+      model: modelSlug,
       language,
       voice,
       text,

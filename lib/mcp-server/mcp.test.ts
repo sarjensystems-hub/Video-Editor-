@@ -105,7 +105,7 @@ describe("Studio media MCP", () => {
     expect(names).toContain("studio_restore_creative_revision");
   });
 
-  it("advertises Gemini's multilingual speech and exact voice catalogue", async () => {
+  it("advertises ElevenLabs as the default speech model, with Gemini selectable", async () => {
     const result = await handleMcpMessage(
       { jsonrpc: "2.0", id: "speech-schema", method: "tools/list", params: {} },
       deps,
@@ -113,14 +113,15 @@ describe("Studio media MCP", () => {
     const speech = (result as any).result.tools.find(
       (tool: { name: string }) => tool.name === "studio_generate_speech_asset",
     );
-
-    expect(speech.description).toMatch(/Gemini 3\.8 Flash TTS/i);
-    expect(speech.description).toMatch(/70\+ languages/i);
+    expect(speech.description).toMatch(/ElevenLabs Eleven v4, the default/);
+    expect(speech.description).toMatch(/prose direction is read aloud/);
+    expect(speech.description).toMatch(/Gemini 3\.8 Flash TTS/);
+    expect(speech.inputSchema.properties.model.enum).toEqual(["eleven-v4", "gemini"]);
+    expect(speech.inputSchema.properties.model.default).toBe("eleven-v4");
     expect(speech.inputSchema.properties.language.enum).toBeUndefined();
-    expect(speech.inputSchema.properties.voice.enum).toHaveLength(30);
-    expect(speech.inputSchema.properties.voice.enum).toEqual(
-      expect.arrayContaining(["Kore", "Puck", "Aoede", "Sulafat"]),
-    );
+    expect(speech.inputSchema.properties.voice.enum).toBeUndefined();
+    expect(speech.inputSchema.properties.voice.description).toMatch(/sarah/);
+    expect(speech.inputSchema.properties.voice.description).toMatch(/Kore/);
   });
 
   it("no longer advertises the second-LLM creative director or decomposition tools", async () => {

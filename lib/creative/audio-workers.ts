@@ -8,38 +8,24 @@
  *
  * Model choices, from the live OpenRouter catalogue:
  *
- * - Speech: `google/gemini-3.8-flash-tts`, the successor to 3.1 Flash TTS
- *   Preview, ranked first for text-to-speech on Design Arena and under half its
- *   price. It keeps the same thirty named voices, 70+ languages,
- *   natural-language performance direction and inline audio tags. Language is detected from the script rather than coupled to a
- *   provider-specific voice id.
+ * - Speech, by default: `elevenlabs/eleven-v4`. Ranked first on Artificial
+ *   Analysis's blind-vote TTS arena and its pronunciation benchmark, ahead of
+ *   Gemini 3.8 Flash TTS, and it speaks exactly what is written rather than
+ *   adding breaths of its own - which matters when captions are timed to the
+ *   script. 90+ languages (14 Indian), 21 preset voices, inline audio tags
+ *   such as [excited] or [whispers]. Prose direction is spoken aloud, so it
+ *   takes none. About 5 cents for a 76-second voiceover through OpenRouter.
+ * - Speech, on request: `google/gemini-3.8-flash-tts`. 130+ languages (about
+ *   20 Indian), thirty named voices and natural-language performance
+ *   direction, at under half the price.
  * - Music: `google/lyria-3-clip-preview` at $0.04 per 30-second clip. The Pro
  *   variant generates full songs for $0.08 and is overkill for short social.
  *
  * The optional language value is retained as asset metadata for callers that
- * want it; Gemini detects the language from the supplied script itself.
+ * want it; both speech models detect the language from the script itself.
  */
 
-export const DEFAULT_SPEECH_MODEL = "google/gemini-3.8-flash-tts";
 export const DEFAULT_MUSIC_MODEL = "google/lyria-3-clip-preview";
-
-/**
- * The wire format the speech endpoint will actually accept.
- *
- * Not a preference - Gemini TTS rejects anything else outright: `Gemini TTS
- * only supports response_format="pcm". Got "mp3"`. Kokoro accepted `mp3` on
- * this same OpenRouter endpoint, which is why the swap to Gemini looked like a
- * one-line model change and was not: OpenRouter transcodes for some speech
- * models and passes the provider's own constraint through for others.
- */
-export const SPEECH_RESPONSE_FORMAT = "pcm";
-
-/**
- * What that PCM actually is, since headerless PCM carries no description of
- * itself. Gemini TTS emits 24kHz 16-bit mono; `audio-generate.ts` wraps it in a
- * WAV header on the way out so the rest of the pipeline sees a real container.
- */
-export const SPEECH_PCM_FORMAT = { sampleRate: 24000, channels: 1, bitsPerSample: 16 } as const;
 
 export const GEMINI_TTS_VOICE_STYLES = {
   Zephyr: "Bright", Puck: "Upbeat", Charon: "Informative", Kore: "Firm",
@@ -61,6 +47,79 @@ export function normalizeSpeechLanguage(value: unknown): string {
   return raw ? raw.replace(/_/g, "-") : "auto";
 }
 
+/** ElevenLabs' preset voices as OpenRouter exposes them. */
+export const ELEVENLABS_VOICES = [
+  "sarah", "george", "adam", "alice", "bella", "bill", "brian", "callum", "charlie", "chris", "daniel",
+  "eric", "harry", "jessica", "laura", "liam", "lily", "matilda", "river", "roger", "will",
+] as const;
+export type ElevenLabsVoice = (typeof ELEVENLABS_VOICES)[number];
+
+export interface SpeechModelConfig {
+  slug: string;
+  label: string;
+  /**
+   * Not a preference: Gemini TTS rejects anything but PCM outright (`Gemini
+   * TTS only supports response_format="pcm". Got "mp3"`), and its PCM is
+   * headerless, so `pcm` describes it for the WAV header `audio-generate.ts`
+   * wraps it in. ElevenLabs returns ordinary MP3.
+   */
+  responseFormat: "mp3" | "pcm";
+  pcm: { sampleRate: number; channels: number; bitsPerSample: number } | null;
+  voices: readonly string[];
+  defaultVoice: string;
+}
+
+export const SPEECH_MODELS = {
+  "eleven-v4": {
+    slug: "elevenlabs/eleven-v4",
+    label: "ElevenLabs Eleven v4",
+    responseFormat: "mp3",
+    pcm: null,
+    voices: ELEVENLABS_VOICES,
+    defaultVoice: "sarah",
+  },
+  gemini: {
+    slug: "google/gemini-3.8-flash-tts",
+    label: "Google Gemini 3.8 Flash TTS",
+    responseFormat: "pcm",
+    pcm: { sampleRate: 24000, channels: 1, bitsPerSample: 16 },
+    voices: Object.keys(GEMINI_TTS_VOICE_STYLES),
+    defaultVoice: "Kore",
+  },
+} satisfies Record<string, SpeechModelConfig>;
+
+export type SpeechModelId = keyof typeof SPEECH_MODELS;
+export const SPEECH_MODEL_IDS = Object.keys(SPEECH_MODELS) as SpeechModelId[];
+export const DEFAULT_SPEECH_MODEL_ID: SpeechModelId = "eleven-v4";
+/** The OpenRouter slug speech uses unless a caller asks for another model. */
+export const DEFAULT_SPEECH_MODEL = SPEECH_MODELS[DEFAULT_SPEECH_MODEL_ID].slug;
+
+/**
+ * Picks the speech model and voice together, since voices belong to a model.
+ * A Gemini voice name with no model chosen selects Gemini, so a caller written
+ * before ElevenLabs became the default keeps getting the voice it named.
+ */
+export function resolveSpeechSettings(requestedModel: unknown, requestedVoice: unknown): { model: SpeechModelId; voice: string } {
+  const voiceRaw = typeof requestedVoice === "string" ? requestedVoice.trim() : "";
+  const modelRaw = typeof requestedModel === "string" ? requestedModel.trim().toLowerCase() : "";
+  let model: SpeechModelId;
+  if (modelRaw) {
+    const match = SPEECH_MODEL_IDS.find((id) => id === modelRaw || SPEECH_MODELS[id].slug === modelRaw);
+    if (!match) throw new Error(`Unknown speech model ${modelRaw}. Use one of: ${SPEECH_MODEL_IDS.join(", ")}`);
+    model = match;
+  } else if (voiceRaw && GEMINI_TTS_VOICES.some((voice) => voice.toLowerCase() === voiceRaw.toLowerCase())) {
+    model = "gemini";
+  } else {
+    model = DEFAULT_SPEECH_MODEL_ID;
+  }
+  const config: SpeechModelConfig = SPEECH_MODELS[model];
+  if (!voiceRaw) return { model, voice: config.defaultVoice };
+  const voice = config.voices.find((candidate) => candidate.toLowerCase() === voiceRaw.toLowerCase());
+  if (voice) return { model, voice };
+  throw new Error(`Unknown voice ${voiceRaw} for ${config.label}. Available voices: ${config.voices.join(", ")}`);
+}
+
+/** Resolves an OpenRouter-advertised Gemini voice, case-insensitively. */
 /** Resolves an OpenRouter-advertised Gemini voice, case-insensitively. */
 export function resolveSpeechVoice(requested: unknown): GeminiTtsVoice {
   if (typeof requested !== "string" || !requested.trim()) return "Kore";

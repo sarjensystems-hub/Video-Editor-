@@ -1313,6 +1313,7 @@ export async function handleCreativeMcpTool(
         transcript: typeof input.transcript === "string" ? input.transcript : undefined,
         language: typeof input.language === "string" ? input.language : undefined,
         voice: typeof input.voice === "string" ? input.voice : undefined,
+        model: typeof input.model === "string" ? input.model : undefined,
         label: typeof input.label === "string" ? input.label : undefined,
       }),
     );

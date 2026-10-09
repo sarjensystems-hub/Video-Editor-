@@ -32,7 +32,7 @@ async function persistMeasuredDuration(
 /** Generate speech, then refuse to return it until its real duration is known. */
 export async function generateCreativeSpeechAsset(
   context: CreativeRuntimeContext,
-  input: { projectId: string; text: string; transcript?: string; language?: string; voice?: string; label?: string },
+  input: { projectId: string; text: string; transcript?: string; language?: string; voice?: string; model?: string; label?: string },
 ) {
   return persistMeasuredDuration(context, await base.generateCreativeSpeechAsset(context, input));
 }

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateMusicBytes, generateSpeechBytes } from "./audio-generate";
 import { pcmDurationMs, sniffAudioContainer, wrapPcmInWav } from "./audio-format";
-import { SPEECH_PCM_FORMAT } from "./audio-workers";
+import { SPEECH_MODELS } from "./audio-workers";
+
+const SPEECH_PCM_FORMAT = SPEECH_MODELS.gemini.pcm;
 import { runWithOpenRouterKey } from "../openrouter-key";
 
 /**
@@ -61,7 +63,7 @@ describe("speech generation transport", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await asUser(() => generateSpeechBytes({ text: "Hello", voice: "Kore" }));
+    const result = await asUser(() => generateSpeechBytes({ text: "Hello", voice: "Kore", model: "gemini" }));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://openrouter.ai/api/v1/audio/speech");
@@ -87,10 +89,33 @@ describe("speech generation transport", () => {
 
     // Headerless pcm on the retry too, so it comes back as a wrapped container
     // rather than the audio/mpeg the pre-Gemini version of this test asserted.
-    await expect(asUser(() => generateSpeechBytes({ text: "Hello", voice: "Kore" }))).resolves.toMatchObject({
+    await expect(asUser(() => generateSpeechBytes({ text: "Hello", voice: "Kore", model: "gemini" }))).resolves.toMatchObject({
       contentType: "audio/wav",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("ElevenLabs is the default speech model", () => {
+  it("requests Eleven v4 as mp3 and keeps the mp3 as it is", async () => {
+    const mp3 = Buffer.concat([Buffer.from("ID3"), Buffer.alloc(200)]);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(new Uint8Array(mp3), { status: 200, headers: { "content-type": "audio/mpeg", "x-generation-id": "gen-11" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await asUser(() => generateSpeechBytes({ text: "[excited] Open WhatsApp.", voice: "sarah" }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({ model: "elevenlabs/eleven-v4", input: "[excited] Open WhatsApp.", voice: "sarah", response_format: "mp3" });
+    expect(result.contentType).toBe("audio/mpeg");
+    expect(result.bytes.byteLength).toBe(mp3.byteLength);
+    expect(result.generationId).toBe("gen-11");
+  });
+
+  it("does not blame Gemini's prompt framing when ElevenLabs returns nothing", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Uint8Array(0), { status: 200 })));
+    await expect(asUser(() => generateSpeechBytes({ text: "Hello", voice: "sarah" })))
+      .rejects.toThrow(/^Speech generation returned no audio\.$/);
   });
 });
 
@@ -106,7 +131,7 @@ describe("speech transport speaks the format Gemini actually accepts", () => {
       new Response(new Uint8Array(4800), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await asUser(() => generateSpeechBytes({ text: "Test.", voice: "Kore" }));
+    await asUser(() => generateSpeechBytes({ text: "Test.", voice: "Kore", model: "gemini" }));
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.response_format).toBe("pcm");
@@ -119,7 +144,7 @@ describe("speech transport speaks the format Gemini actually accepts", () => {
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(pcm, { status: 200 })));
 
-    const result = await asUser(() => generateSpeechBytes({ text: "Test.", voice: "Kore" }));
+    const result = await asUser(() => generateSpeechBytes({ text: "Test.", voice: "Kore", model: "gemini" }));
 
     // Without the wrapper this would sniff as nothing and default to audio/mpeg
     // over bytes that are not MP3 - stored happily, unplayable everywhere.
@@ -134,7 +159,7 @@ describe("speech transport speaks the format Gemini actually accepts", () => {
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(new Uint8Array(alreadyWav), { status: 200 })));
 
-    const result = await asUser(() => generateSpeechBytes({ text: "Test.", voice: "Kore" }));
+    const result = await asUser(() => generateSpeechBytes({ text: "Test.", voice: "Kore", model: "gemini" }));
 
     // Double-wrapping would bury the real header inside a second one.
     expect(result.bytes.byteLength).toBe(alreadyWav.byteLength);
@@ -181,7 +206,7 @@ describe("an empty audio stream is diagnosed, not retried", () => {
     const fetchMock = vi.fn().mockResolvedValue(emptyStream());
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(asUser(() => generateSpeechBytes({ text: "[deadpan] White. Black. Still.", voice: "Gacrux" })))
+    await expect(asUser(() => generateSpeechBytes({ text: "[deadpan] White. Black. Still.", voice: "Gacrux", model: "gemini" })))
       .rejects.toThrow(/read the whole prompt as performance direction/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -189,7 +214,7 @@ describe("an empty audio stream is diagnosed, not retried", () => {
   it("tells the caller how to frame the line, not just that it failed", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(emptyStream()));
 
-    await expect(asUser(() => generateSpeechBytes({ text: "Dry, deadpan. Still.", voice: "Gacrux" })))
+    await expect(asUser(() => generateSpeechBytes({ text: "Dry, deadpan. Still.", voice: "Gacrux", model: "gemini" })))
       .rejects.toThrow(/Say the following line/);
   });
 
@@ -199,7 +224,7 @@ describe("an empty audio stream is diagnosed, not retried", () => {
       .mockResolvedValueOnce(new Response(new Uint8Array(960), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(asUser(() => generateSpeechBytes({ text: "Hello", voice: "Kore" }))).resolves.toMatchObject({
+    await expect(asUser(() => generateSpeechBytes({ text: "Hello", voice: "Kore", model: "gemini" }))).resolves.toMatchObject({
       contentType: "audio/wav",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -208,7 +233,7 @@ describe("an empty audio stream is diagnosed, not retried", () => {
   it("gives the same diagnosis when a 200 carries a zero-length body", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Uint8Array(0), { status: 200 })));
 
-    await expect(asUser(() => generateSpeechBytes({ text: "[deadpan] Still.", voice: "Gacrux" })))
+    await expect(asUser(() => generateSpeechBytes({ text: "[deadpan] Still.", voice: "Gacrux", model: "gemini" })))
       .rejects.toThrow(/read the whole prompt as performance direction/);
   });
 });
