@@ -115,7 +115,7 @@ export function isRenderJobStale(job: RenderJobHeartbeat, nowMs: number): boolea
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Renders one account may have running at once. Each holds an 8-vCPU sandbox
+ * Renders one account may have running at once. Each holds a 4-vCPU sandbox (the Hobby maximum)
  * for up to 45 minutes, and nothing else stops an assistant stuck in a loop
  * from starting them faster than they finish.
  */
