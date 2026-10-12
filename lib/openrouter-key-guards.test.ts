@@ -61,8 +61,15 @@ describe("bring-your-own-key guards", () => {
       expect(source, `${route} must open a key scope`).toContain("withOpenRouterKeyScope");
     }
 
-    // MCP authenticates its own way, so it binds the key itself.
-    const mcp = readFileSync(join(ROOT, "app", "api", "mcp", "route.ts"), "utf8");
-    expect(mcp).toContain("withUserOpenRouterKey");
+    // MCP, the OpenRouter callback and the daily sweep have no signed-in
+    // browser session, so each binds the job owner's key itself.
+    for (const route of [
+      join("app", "api", "mcp", "route.ts"),
+      join("app", "api", "videos", "callback", "[id]", "route.ts"),
+      join("app", "api", "cron", "sweep-jobs", "route.ts"),
+    ]) {
+      const source = readFileSync(join(ROOT, route), "utf8");
+      expect(source, `${route} must bind the owner's key`).toContain("withUserOpenRouterKey");
+    }
   });
 });

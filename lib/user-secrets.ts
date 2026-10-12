@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 
 /**
  * Symmetric encryption for secrets a user hands us — today, their own
@@ -70,6 +70,15 @@ export function decryptSecret(encoded: string): string {
     decipher.update(Buffer.from(ciphertextPart, "base64")),
     decipher.final(),
   ]).toString("utf8");
+}
+
+/**
+ * A key for one purpose, derived from the encryption key so no second secret
+ * has to be configured. Different labels give unrelated keys, so a value
+ * signed for one use can never be replayed as another.
+ */
+export function deriveSubkey(label: string): Buffer {
+  return createHmac("sha256", encryptionKey()).update(`studio-subkey:${label}`).digest();
 }
 
 /** The last four characters, for showing which key is stored without revealing it. */

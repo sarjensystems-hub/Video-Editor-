@@ -50,7 +50,7 @@ export interface ProviderStatus {
 export interface VideoProvider {
   readonly name: VideoProviderName;
   resolveModel(request: GenerateVideoRequest): string;
-  submit(request: GenerateVideoRequest): Promise<ProviderSubmission>;
+  submit(request: GenerateVideoRequest, options?: { callbackUrl?: string }): Promise<ProviderSubmission>;
   getStatus(providerJobId: string): Promise<ProviderStatus>;
   download(providerJobId: string): Promise<{ bytes: Buffer; contentType: string }>;
 }

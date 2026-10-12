@@ -55,6 +55,9 @@ function harness(options: {
   providerStatus?: "pending" | "in_progress" | "completed" | "failed";
   storedUrl?: string | null;
   ownedJob?: UserVideoJob | null;
+  downloadThrows?: boolean;
+  nowMs?: number;
+  callbackUrlFor?: (jobId: string) => string | undefined;
 } = {}) {
   const calls: string[] = [];
   let current = options.ownedJob ?? job();
@@ -99,8 +102,9 @@ function harness(options: {
   const provider: VideoProvider = {
     name: "openrouter",
     resolveModel: () => "bytedance/seedance-2.0-fast",
-    async submit() {
+    async submit(_request, submitOptions) {
       calls.push("submit");
+      if (submitOptions?.callbackUrl) calls.push(`callback:${submitOptions.callbackUrl}`);
       if (options.providerSubmitThrows) throw new Error("provider down");
       return { id: "provider-1", status: "pending" };
     },
@@ -109,7 +113,10 @@ function harness(options: {
       const status = options.providerStatus ?? "completed";
       return { id: "provider-1", status, error: status === "failed" ? "failed upstream" : undefined, costUsd: 0.2 };
     },
-    async download() { calls.push("download"); return { bytes: Buffer.from("video"), contentType: "video/mp4" }; },
+    async download() {
+      calls.push("download");
+      if (options.downloadThrows) throw new Error("storage hiccup");
+      return { bytes: Buffer.from("video"), contentType: "video/mp4" }; },
   };
 
   const orchestrator = new UserVideoOrchestrator(
@@ -118,6 +125,7 @@ function harness(options: {
     () => provider,
     (duration, resolution) => duration * (resolution === "480p" ? 4 : 6),
     async () => { calls.push("store"); return options.storedUrl === undefined ? "https://cdn.example.com/video.mp4" : options.storedUrl; },
+    { nowMs: () => options.nowMs ?? Date.parse(now()), callbackUrlFor: options.callbackUrlFor },
   );
 
   return { orchestrator, calls, getCurrent: () => current };
@@ -175,5 +183,43 @@ describe("UserVideoOrchestrator", () => {
     const foreign = job({ userId: "user-2" });
     const { orchestrator } = harness({ ownedJob: foreign });
     await expect(orchestrator.get("user-1", foreign.id)).resolves.toBeNull();
+  });
+
+  it("hands the provider a callback URL for the reserved job", async () => {
+    const { orchestrator, calls } = harness({ callbackUrlFor: (id) => `https://app.example.com/api/videos/callback/${id}?token=t` });
+    await orchestrator.start("user-1", request());
+    expect(calls).toContain("callback:https://app.example.com/api/videos/callback/11111111-1111-4111-8111-111111111111?token=t");
+  });
+
+  it("keeps retrying a finished video that could not be saved instead of failing it", async () => {
+    const owned = job({ providerJobId: "provider-1", status: "in_progress" });
+    const { orchestrator, calls } = harness({ ownedJob: owned, providerStatus: "completed", downloadThrows: true });
+    const result = await orchestrator.get("user-1", owned.id);
+    expect(result?.status).toBe("in_progress");
+    expect(result?.error).toMatch(/retrying/);
+    expect(calls).not.toContain("refund-once");
+  });
+
+  it("gives up on a finished video that still cannot be saved after a day", async () => {
+    const owned = job({ providerJobId: "provider-1", status: "in_progress" });
+    const { orchestrator } = harness({
+      ownedJob: owned, providerStatus: "completed", downloadThrows: true,
+      nowMs: Date.parse(now()) + 25 * 60 * 60 * 1000,
+    });
+    await expect(orchestrator.get("user-1", owned.id)).resolves.toMatchObject({ status: "failed" });
+  });
+
+  it("waits a minute between save retries instead of re-downloading on every poll", async () => {
+    const retrying = job({
+      providerJobId: "provider-1", status: "in_progress",
+      error: "Video is ready but could not be saved yet; retrying. storage hiccup",
+      updatedAt: now(),
+    });
+    const soon = harness({ ownedJob: retrying, nowMs: Date.parse(now()) + 10_000 });
+    await expect(soon.orchestrator.get("user-1", retrying.id)).resolves.toMatchObject({ status: "in_progress" });
+    expect(soon.calls).not.toContain("poll");
+
+    const later = harness({ ownedJob: retrying, nowMs: Date.parse(now()) + 61_000 });
+    await expect(later.orchestrator.get("user-1", retrying.id)).resolves.toMatchObject({ status: "completed" });
   });
 });

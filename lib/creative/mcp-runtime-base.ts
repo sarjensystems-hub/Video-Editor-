@@ -10,6 +10,7 @@ import {
   type CreativeRemotionAssetMap,
 } from "./remotion";
 import { previewCopyStore } from "./preview-copies";
+import { assertRenderCapacity } from "./render-job";
 import { RENDER_JOB_STALE_MESSAGE, canClaimRenderJobPoll, claimRenderJobPoll, isRenderJobStale, shouldRetryDetachedRender, updateClaimedRenderJob } from "./render-job";
 import { resolveCreativeFrameAtTime } from "./frame-time";
 import { extractSceneDocument, findSceneExportWindow } from "./scene-export";
@@ -34,6 +35,22 @@ import { describeCreativeSchema, MAX_TRANSACTION_OPERATIONS, type CreativeSchema
 import { creativeCapabilityDigest } from "./capability-map";
 import { withInlineImages, type InlineImage } from "../mcp-server/inline-images";
 import { userStoragePath } from "@/lib/storage-paths";
+import { requestOrigin } from "@/lib/app-url";
+import { jobCallbackUrl } from "@/lib/job-callbacks";
+import { launchSandboxName } from "./render-settle";
+
+/**
+ * Where the render's sandbox reports back when it is done. Outside a request
+ * (tests, scripts) there is no origin to report to, and the job simply waits
+ * for a poll as it always did.
+ */
+async function renderCallbackUrl(jobId: string): Promise<string | undefined> {
+  try {
+    return jobCallbackUrl(await requestOrigin(), "render", jobId);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * The ChatGPT-facing Creative Studio surface.
@@ -402,6 +419,7 @@ async function renderProject(context: McpUserContext, request: CreativeProjectRe
     output_height: Math.max(1, Math.round(document.canvas.height * resolvedOptions.scale)),
   };
   const { assets, requiredAssetIds } = await resolveOwnedAssetMap(context, document);
+  await assertRenderCapacity(context.supabase, context.user.id);
   const renderSupabase = await getCreditServiceClient(context);
   renderMetadata.required_asset_ids = requiredAssetIds;
   const renderCost = creativeRenderCost(resolvedOptions.durationMs);
@@ -441,6 +459,9 @@ async function renderProject(context: McpUserContext, request: CreativeProjectRe
     throw chargeError;
   }
 
+  // Resolved now: the request's headers are gone once the response is sent.
+  const callbackUrl = await renderCallbackUrl(String(job.id));
+
   // Launch only. The Remotion command itself is detached inside the sandbox;
   // later status polls reconnect by sandbox/cmd id, so the request function is
   // no longer the render's lifetime owner.
@@ -453,6 +474,14 @@ async function renderProject(context: McpUserContext, request: CreativeProjectRe
         options: requestedOptions,
         outputKey: userStoragePath(context.user.id, "renders", `${job.id}.mp4`),
         previews: previewStore(context),
+        callbackUrl,
+        onSandboxCreated: async (sandboxName) => {
+          const { error: recordError } = await renderSupabase.from("creative_render_jobs").update({
+            metadata: { ...renderMetadata, sandbox_name: sandboxName },
+            updated_at: new Date().toISOString(),
+          }).eq("id", job.id).eq("user_id", context.user.id);
+          if (recordError) throw new Error(`Could not record render sandbox: ${recordError.message}`);
+        },
       });
       const now = new Date().toISOString();
       const { error: handleError } = await renderSupabase.from("creative_render_jobs").update({
@@ -1204,6 +1233,7 @@ export async function handleCreativeMcpTool(
                 },
                 outputKey: detached.outputKey,
                 previews: previewStore(context),
+                callbackUrl: await renderCallbackUrl(jobId),
               });
               const nextMetadata = { ...metadata, phase: "retrying-detached-render", retry_count: retryCount + 1, detached_render: handle, estimated_completion_ms: null };
               try {
@@ -1264,6 +1294,11 @@ export async function handleCreativeMcpTool(
         .maybeSingle();
       if (staleError) throw new Error(`Could not close stale render job: ${staleError.message}`);
       if (!claimed) return { ...data, poll_in_progress: true };
+      const orphan = launchSandboxName(metadata);
+      if (orphan) {
+        const { stopSandboxByName } = await import("./render");
+        await stopSandboxByName(orphan);
+      }
       const refundPending = await refundCreativeRenderCredits(context, jobId).then(() => false).catch(() => true);
       return { ...data, status: "failed", error: RENDER_JOB_STALE_MESSAGE, updated_at: finishedAt, refund_pending: refundPending };
     }
@@ -1271,6 +1306,27 @@ export async function handleCreativeMcpTool(
       const refundPending = await refundCreativeRenderCredits(context, jobId).then(() => false).catch(() => true);
       return { ...data, refund_pending: refundPending };
     }
+    // A render the sandbox's own callback (or the daily sweep) closed out was
+    // never registered as an asset, because that happens with the user's
+    // context. Register it the first time its owner looks.
+    if (
+      data.status === "completed" && metadata.source === "mcp" && typeof data.output_url === "string" &&
+      typeof metadata.output_asset_id !== "string"
+    ) {
+      try {
+        const registered = await registerRuntimeCreativeAsset(await runtimeContext(context), {
+          projectId: String(data.project_id), kind: "video", assetClass: "render", source: "render", url: data.output_url,
+          mimeType: data.content_type ?? "video/mp4", filename: `${metadata.scene_id ? "clip" : "film"}-${jobId}.mp4`,
+          width: Number(metadata.output_width) || null, height: Number(metadata.output_height) || null,
+          durationMs: Number(metadata.duration_ms) || null, sizeBytes: data.size_bytes ?? null,
+          metadata: { render_job_id: jobId, scene_id: metadata.scene_id ?? null, source: "mcp", start_ms: metadata.start_ms, end_ms: metadata.end_ms, quality: metadata.quality },
+        });
+        const completedMetadata = { ...metadata, output_asset_id: String(registered.id) };
+        const { error: metadataError } = await renderSupabase.from("creative_render_jobs").update({ metadata: completedMetadata }).eq("id", jobId).eq("user_id", context.user.id).eq("status", "completed");
+        if (!metadataError) Object.assign(metadata, completedMetadata);
+      } catch { /* the render itself is still complete */ }
+    }
+
     // Lifted out of metadata so a caller does not have to know it lives there:
     // this is the id to hand to studio_inspect_video_asset to look at the
     // film that was just rendered.

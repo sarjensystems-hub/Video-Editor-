@@ -55,7 +55,7 @@ export function createOpenRouterVideoProvider(api: OpenRouterApi = DEFAULT_API):
       );
     },
 
-    async submit(request) {
+    async submit(request, options) {
       const result = await api.submitVideoJob({
         prompt: request.prompt,
         aspectRatio: request.aspectRatio,
@@ -69,6 +69,7 @@ export function createOpenRouterVideoProvider(api: OpenRouterApi = DEFAULT_API):
         model: this.resolveModel(request),
         referenceInstruction:
           "Match each referenced subject or object to its reference image while preserving identity and appearance.",
+        callbackUrl: options?.callbackUrl,
       });
 
       return { id: result.id, status: normalizeSubmissionStatus(result.status) };

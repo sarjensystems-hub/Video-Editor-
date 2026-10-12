@@ -1,7 +1,7 @@
 /**
  * POST /api/videos/generate
  *
- * Submits a Seedance 2.0 Fast video generation job via OpenRouter and
+ * Submits a video generation job (Seedance 2.0 Fast by default) via OpenRouter and
  * records it in `video_generations`. Returns immediately with the row id —
  * generation itself is async; the client polls GET /api/videos/status.
  *
@@ -20,6 +20,7 @@
  *                                 // used as the first frame
  * }
  */
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -34,8 +35,10 @@ import {
   type VideoResolution,
   type VideoCharacterRef,
 } from "@/lib/video-gen";
-import { submitVideoJob } from "@/lib/video-gen-api";
 import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
+import { DEFAULT_VIDEO_MODEL, submitVideoJob } from "@/lib/video-gen-api";
+import { requestOrigin } from "@/lib/app-url";
+import { jobCallbackUrl } from "@/lib/job-callbacks";
 
 export const maxDuration = 60;
 
@@ -100,6 +103,35 @@ async function handlePOST(request: Request) {
   }
 
   const generateAudio = (body as Record<string, unknown>).generateAudio === true;
+  const model = spec?.id ?? DEFAULT_VIDEO_MODEL;
+
+  // The row's id is chosen before submitting so OpenRouter can be handed a
+  // callback URL naming it: a finished video is then fetched even if this
+  // browser tab is closed before it polls.
+  const jobId = randomUUID();
+  const callbackUrl = jobCallbackUrl(await requestOrigin().catch(() => ""), "video", jobId);
+
+  // Recorded before anything is spent, so a job OpenRouter accepted always has
+  // a row to land in, even if this function dies right after submitting.
+  const { error: reserveError } = await supabase
+    .from("video_generations")
+    .insert({
+      id:                 jobId,
+      user_id:            user.id,
+      model,
+      openrouter_job_id:  null,
+      status:             "pending",
+      prompt,
+      characters,
+      aspect_ratio:       aspectRatio,
+      resolution,
+      duration_seconds:   duration,
+      generate_audio:     generateAudio,
+    });
+  if (reserveError) {
+    console.error("[videos/generate] insert failed:", reserveError.message, reserveError.details);
+    return NextResponse.json({ error: reserveError.message }, { status: 500 });
+  }
 
   let submission;
   try {
@@ -110,33 +142,34 @@ async function handlePOST(request: Request) {
       duration,
       characters,
       generateAudio,
-      model: spec?.id,
+      model,
+      callbackUrl,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Video generation failed to start.";
+    // Nothing was accepted upstream, so the reservation has nothing to track.
+    await supabase.from("video_generations").delete().eq("id", jobId).eq("user_id", user.id).is("openrouter_job_id", null);
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  const { data: row, error: insertError } = await supabase
+  const { data: row, error: updateError } = await supabase
     .from("video_generations")
-    .insert({
-      user_id:            user.id,
+    .update({
       openrouter_job_id:  submission.id,
       status:             submission.status ?? "pending",
-      prompt,
-      characters,
-      aspect_ratio:       aspectRatio,
-      resolution,
-      duration_seconds:   duration,
-      generate_audio:     generateAudio,
+      updated_at:         new Date().toISOString(),
     })
+    .eq("id", jobId)
+    .eq("user_id", user.id)
     .select()
     .single();
 
-  if (insertError || !row) {
-    console.error("[videos/generate] insert failed:", insertError?.message, insertError?.details);
+  if (updateError || !row) {
+    // The job is running and paid for; its callback carries the OpenRouter id
+    // and adopts it into this row (app/api/videos/callback).
+    console.error("[videos/generate] could not record the OpenRouter job id:", updateError?.message);
     return NextResponse.json(
-      { error: insertError?.message ?? "Failed to save the generation job" },
+      { error: "The video was started but could not be recorded yet; it will appear when it finishes." },
       { status: 500 },
     );
   }

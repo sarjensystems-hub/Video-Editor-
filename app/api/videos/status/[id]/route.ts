@@ -1,27 +1,26 @@
 /**
  * GET /api/videos/status/[id]
  *
- * Polls (and advances) a video_generations row:
+ * Polls (and advances) a video_generations row through the same advancer the
+ * MCP tool, the OpenRouter callback and the daily sweep use
+ * (lib/mcp-server/user-orchestrator.ts):
  *  - pending/in_progress → re-checks the OpenRouter job, updates status
  *  - completed on OpenRouter but not yet persisted → downloads the raw
- *    video bytes (no re-encoding) and stores them, then marks the row done
+ *    video bytes (no re-encoding) and stores them, then marks the row done.
+ *    A download or storage failure is retried on the next check for a day
+ *    rather than failing a video that was already paid for.
  *  - failed/cancelled/expired → records the error
  *
- * Terminal rows (already completed/failed/cancelled/expired with a
- * video_url or error already recorded) are returned as-is without an
- * upstream call.
+ * Settled rows are returned as-is without an upstream call.
  */
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { uploadAnyBytes } from "@/lib/storage";
-import type { VideoGenerationRow } from "@/lib/video-gen";
-import { pollVideoJob, downloadVideoContent } from "@/lib/video-gen-api";
 import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
-import { userStoragePath } from "@/lib/storage-paths";
+import { createVideoJobAdvancer } from "@/lib/mcp-server/user-runtime";
 
 export const maxDuration = 60;
 
-const TERMINAL_STATES = new Set(["completed", "failed", "cancelled", "expired"]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function handleGET(
   _req: Request,
@@ -32,6 +31,15 @@ async function handleGET(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!UUID_RE.test(id)) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  try {
+    const advanced = await createVideoJobAdvancer(supabase).get(user.id, id);
+    if (!advanced) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Failed to check generation status.";
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
 
   const { data: row } = await supabase
     .from("video_generations")
@@ -41,82 +49,7 @@ async function handleGET(
     .single();
 
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  const current = row as VideoGenerationRow;
-
-  // Already settled and fully persisted — nothing more to do.
-  if (current.status === "completed" && current.video_url) {
-    return NextResponse.json({ job: current });
-  }
-  if (TERMINAL_STATES.has(current.status) && current.status !== "completed") {
-    return NextResponse.json({ job: current });
-  }
-
-  let upstream;
-  try {
-    upstream = await pollVideoJob(current.openrouter_job_id);
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Failed to check generation status.";
-    return NextResponse.json({ error: message }, { status: 502 });
-  }
-
-  // Still running — reflect the latest status without touching anything else.
-  if (upstream.status === "pending" || upstream.status === "in_progress") {
-    if (upstream.status !== current.status) {
-      await supabase
-        .from("video_generations")
-        .update({ status: upstream.status, updated_at: new Date().toISOString() })
-        .eq("id", id);
-    }
-    return NextResponse.json({ job: { ...current, status: upstream.status } });
-  }
-
-  if (upstream.status === "completed") {
-    try {
-      const { bytes, contentType } = await downloadVideoContent(current.openrouter_job_id);
-      const ext  = contentType.includes("mp4") ? "mp4" : contentType.split("/")[1] || "mp4";
-      const path = userStoragePath(user.id, "videos", `${current.id}.${ext}`);
-      const url  = await uploadAnyBytes(bytes, path, contentType);
-
-      if (!url) throw new Error("Failed to store the generated video.");
-
-      const { data: updated } = await supabase
-        .from("video_generations")
-        .update({
-          status:     "completed",
-          video_url:  url,
-          cost_usd:   upstream.usage?.cost ?? null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-        .select()
-        .single();
-
-      return NextResponse.json({ job: updated ?? { ...current, status: "completed", video_url: url } });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to download the generated video.";
-      const { data: updated } = await supabase
-        .from("video_generations")
-        .update({ status: "failed", error: message, updated_at: new Date().toISOString() })
-        .eq("id", id)
-        .select()
-        .single();
-      // Return 200 with the updated job (not a 502) — the state transition itself
-      // succeeded, so the client should render the failure, not just an error banner.
-      return NextResponse.json({ job: updated ?? { ...current, status: "failed", error: message } });
-    }
-  }
-
-  // failed / cancelled / expired
-  const errorMessage = upstream.error ?? "Video generation failed.";
-  const { data: updated } = await supabase
-    .from("video_generations")
-    .update({ status: upstream.status, error: errorMessage, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
-
-  return NextResponse.json({ job: updated ?? { ...current, status: upstream.status, error: errorMessage } });
+  return NextResponse.json({ job: row });
 }
 
 /* Generation on this route bills the signed-in account's own OpenRouter key. */

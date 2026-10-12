@@ -6,6 +6,8 @@ import type { VideoJobState } from "../video-gen";
 import { getVideoProvider } from "./provider";
 import { parseGenerateVideoRequest, type VideoMode, type VideoProviderName } from "./types";
 import { userStoragePath } from "@/lib/storage-paths";
+import { requestOrigin } from "@/lib/app-url";
+import { jobCallbackUrl } from "@/lib/job-callbacks";
 import {
   serializeUserVideoJob,
   UserVideoOrchestrator,
@@ -50,7 +52,7 @@ function mapReferences(input: ReserveUserVideoJobInput) {
   }));
 }
 
-class SupabaseUserVideoRepository implements UserVideoRepository {
+export class SupabaseUserVideoRepository implements UserVideoRepository {
   private supabase: SupabaseClient;
 
   constructor(supabase: SupabaseClient) {
@@ -209,18 +211,42 @@ function extensionFromContentType(contentType: string): string {
   return "mp4";
 }
 
-function createUserOrchestrator(context: McpUserContext) {
+async function storeGeneratedVideo(job: UserVideoJob, bytes: Buffer, contentType: string) {
+  const extension = extensionFromContentType(contentType);
+  return uploadAnyBytes(bytes, userStoragePath(job.userId, "videos", `${job.id}.${extension}`), contentType);
+}
+
+function createUserOrchestrator(context: McpUserContext, origin = "") {
   const repo = new SupabaseUserVideoRepository(context.supabase);
   const credits = new SupabaseUserCreditLedger(context);
+  return new UserVideoOrchestrator(repo, credits, getVideoProvider, videoGenerationCost, storeGeneratedVideo, {
+    callbackUrlFor: (jobId) => jobCallbackUrl(origin, "video", jobId),
+  });
+}
+
+/**
+ * Nothing meters, so a job advanced without its owner present has nothing to
+ * charge or refund: `credits_charged` is always 0 and `refundOnce` skips it.
+ */
+const NO_CREDIT_LEDGER: UserCreditLedger = {
+  deduct: async () => ({ allowed: false, balance: 0, cost: 0, error: "Background video work cannot start jobs." }),
+  refundVideoOnce: async () => false,
+};
+
+/**
+ * Advances existing video jobs for a caller that is not their owner's
+ * request: the web status route (user-scoped client) and the OpenRouter
+ * callback and daily sweep (service client). It cannot start a job. The
+ * caller must put the owner's OpenRouter key in scope (withUserOpenRouterKey
+ * or withOpenRouterKeyScope); a job is never advanced on anyone else's key.
+ */
+export function createVideoJobAdvancer(supabase: SupabaseClient) {
   return new UserVideoOrchestrator(
-    repo,
-    credits,
+    new SupabaseUserVideoRepository(supabase),
+    NO_CREDIT_LEDGER,
     getVideoProvider,
     videoGenerationCost,
-    async (job, bytes, contentType) => {
-      const extension = extensionFromContentType(contentType);
-      return uploadAnyBytes(bytes, userStoragePath(job.userId, "videos", `${job.id}.${extension}`), contentType);
-    },
+    storeGeneratedVideo,
   );
 }
 
@@ -230,7 +256,8 @@ export async function startMcpUserVideoJob(context: McpUserContext, input: unkno
   // account directly, so there is nothing to gate and nothing to meter — the
   // web route is ungated for the same reason.
   const request = parseGenerateVideoRequest(input);
-  const job = await createUserOrchestrator(context).start(context.user.id, request);
+  const origin = await requestOrigin().catch(() => "");
+  const job = await createUserOrchestrator(context, origin).start(context.user.id, request);
   return serializeUserVideoJob(job);
 }
 

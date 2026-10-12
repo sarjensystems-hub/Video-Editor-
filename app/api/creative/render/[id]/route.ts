@@ -7,6 +7,9 @@ import { refundCreativeRenderCredits } from "@/lib/creative/metering";
 import { getCreativeInputAssetMap, getCreativeDocumentAssetIds } from "@/lib/creative/remotion";
 import { extractSceneDocument } from "@/lib/creative/scene-export";
 import type { CreativeDocument } from "@/lib/creative/schema";
+import { launchSandboxName } from "@/lib/creative/render-settle";
+import { requestOrigin } from "@/lib/app-url";
+import { jobCallbackUrl } from "@/lib/job-callbacks";
 
 export const runtime = "nodejs";
 
@@ -72,6 +75,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
               document: retryDocument,
               assets: getCreativeInputAssetMap(rows.map((asset) => ({ id: asset.id, url: asset.url, mimeType: asset.mime_type }))),
               outputKey: detached.outputKey,
+              callbackUrl: jobCallbackUrl(await requestOrigin().catch(() => ""), "render", id),
             });
             const nextMetadata = { ...metadata, phase: "retrying-detached-render", retry_count: retryCount + 1, detached_render: handle, estimated_completion_ms: null };
             try {
@@ -118,6 +122,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       .maybeSingle();
     if (staleError) return NextResponse.json({ error: "Could not close stale render job" }, { status: 500 });
     if (!claimed) return NextResponse.json({ job: { ...data, poll_in_progress: true } });
+    const orphan = launchSandboxName(metadata);
+    if (orphan) {
+      const { stopSandboxByName } = await import("@/lib/creative/render");
+      await stopSandboxByName(orphan);
+    }
     const refundPending = await refundCreativeRenderCredits({ supabase, serviceSupabase: renderSupabase, user }, id).then(() => false).catch(() => true);
     await supabase.from("creative_projects").update({ status: "ready", updated_at: finishedAt }).eq("id", data.project_id).eq("user_id", user.id);
     return NextResponse.json({

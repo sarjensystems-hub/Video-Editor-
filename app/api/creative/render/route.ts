@@ -5,7 +5,7 @@ import { runAfterResponse } from "@/lib/creative/background";
 import { creativeRenderAdapter } from "@/lib/creative/render";
 import { getCreativeDocumentAssetIds, getCreativeInputAssetMap } from "@/lib/creative/remotion";
 import type { CreativeDocument } from "@/lib/creative/schema";
-import { RENDER_JOB_STALE_MESSAGE, isRenderJobStale } from "@/lib/creative/render-job";
+import { RENDER_JOB_STALE_MESSAGE, TooManyActiveRendersError, assertRenderCapacity, isRenderJobStale } from "@/lib/creative/render-job";
 import { creativeRenderCost } from "@/lib/credit-costs";
 import { InsufficientCreditsError, chargeCreativeRenderCredits, refundCreativeRenderCredits } from "@/lib/creative/metering";
 import { getCreativeDurationMs } from "@/lib/creative/evaluate";
@@ -13,6 +13,8 @@ import { extractSceneDocument, findSceneExportWindow } from "@/lib/creative/scen
 import { validateCreativeDocument } from "@/lib/creative/validate";
 import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
 import { userStoragePath } from "@/lib/storage-paths";
+import { requestOrigin } from "@/lib/app-url";
+import { jobCallbackUrl } from "@/lib/job-callbacks";
 
 export const runtime = "nodejs";
 
@@ -123,6 +125,15 @@ async function handlePOST(request: Request) {
     assetRows.map((asset) => ({ id: asset.id, url: asset.url, mimeType: asset.mime_type })),
   );
 
+  try {
+    await assertRenderCapacity(supabase, user.id);
+  } catch (capacityError) {
+    if (capacityError instanceof TooManyActiveRendersError) {
+      return NextResponse.json({ error: capacityError.message }, { status: 429 });
+    }
+    throw capacityError;
+  }
+
   const renderDurationMs = getCreativeDurationMs(document);
   const renderCost = creativeRenderCost(renderDurationMs);
   const baseMetadata = {
@@ -174,6 +185,9 @@ async function handlePOST(request: Request) {
     .eq("id", projectId)
     .eq("user_id", user.id);
 
+  // Resolved now: the request's headers are gone once the response is sent.
+  const callbackUrl = jobCallbackUrl(await requestOrigin().catch(() => ""), "render", String(job.id));
+
   // The background task launches only. The sandbox command is detached and
   // every status poll reconnects to it, so an HTTP function timeout cannot
   // abandon an otherwise healthy render.
@@ -183,6 +197,15 @@ async function handlePOST(request: Request) {
         document,
         assets,
         outputKey: userStoragePath(user.id, "renders", `${job.id}.mp4`),
+        callbackUrl,
+        onSandboxCreated: async (sandboxName) => {
+          const { error: recordError } = await renderSupabase
+            .from("creative_render_jobs")
+            .update({ metadata: { ...baseMetadata, sandbox_name: sandboxName }, updated_at: new Date().toISOString() })
+            .eq("id", job.id)
+            .eq("user_id", user.id);
+          if (recordError) throw new Error(`Could not record render sandbox: ${recordError.message}`);
+        },
       });
       const { error: handleError } = await renderSupabase
         .from("creative_render_jobs")

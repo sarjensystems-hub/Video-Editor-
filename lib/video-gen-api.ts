@@ -74,6 +74,11 @@ export interface SubmitVideoJobParams {
   model?: string;
   /** Optional legend instruction for non-character references (cars/products/etc.). */
   referenceInstruction?: string;
+  /**
+   * Signed URL OpenRouter POSTs to when the job finishes, so a finished
+   * video is downloaded even if nobody polls for it (lib/job-callbacks.ts).
+   */
+  callbackUrl?: string;
 }
 
 export interface VideoJobSubmission {
@@ -112,6 +117,7 @@ export async function submitVideoJob(params: SubmitVideoJobParams): Promise<Vide
     aspect_ratio: params.aspectRatio,
     generate_audio: params.generateAudio,
   };
+  if (params.callbackUrl) body.callback_url = params.callbackUrl;
 
   if (params.characters.length > 0) {
     if (firstFrame) {
@@ -128,11 +134,19 @@ export async function submitVideoJob(params: SubmitVideoJobParams): Promise<Vide
     }
   }
 
-  const res = await fetch(API_BASE, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify(body),
-  });
+  const headers = { "Content-Type": "application/json", ...(await authHeaders()) };
+  let res = await fetch(API_BASE, { method: "POST", headers, body: JSON.stringify(body) });
+
+  // The callback is a convenience: a job without one still finishes, it just
+  // waits for a poll or the daily sweep. If OpenRouter ever refuses the field,
+  // submit again without it rather than failing the generation.
+  if (res.status === 400 && body.callback_url) {
+    const text = await res.clone().text().catch(() => "");
+    if (/callback/i.test(text)) {
+      delete body.callback_url;
+      res = await fetch(API_BASE, { method: "POST", headers, body: JSON.stringify(body) });
+    }
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

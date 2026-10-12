@@ -24,6 +24,18 @@ export interface CreativeRenderRequest {
   onProgress?: (progress: number, phase: string) => Promise<void> | void;
   /** Lets a draft render make and record preview copies of large videos. */
   previews?: PreviewCopyStore;
+  /**
+   * Detached renders only: a signed URL the sandbox POSTs to once the render
+   * has finished, failed or stalled, so the job is closed out and the
+   * sandbox stopped without waiting for anyone to poll.
+   */
+  callbackUrl?: string;
+  /**
+   * Detached renders only: called with the sandbox's name the moment it
+   * exists, before the render is launched, so a launch that dies half-way
+   * still leaves a record of a sandbox someone has to stop.
+   */
+  onSandboxCreated?: (sandboxName: string) => Promise<void>;
 }
 
 export interface CreativeRenderResult {
@@ -203,7 +215,16 @@ async function mapWithConcurrency<T, R>(
  */
 const RENDER_SANDBOX_TIMEOUT_MS = 45 * 60 * 1000;
 
-async function restoreCreativeRendererSandbox() {
+/**
+ * Previews and contact sheets run inside one request and stop their sandbox
+ * in a `finally`. A request killed at its 300-second limit never reaches that
+ * `finally`, so the timeout is the only thing that stops the sandbox: keep it
+ * just past the longest a request can live, not at the 45 minutes an MP4
+ * export needs.
+ */
+const IN_REQUEST_SANDBOX_TIMEOUT_MS = 10 * 60 * 1000;
+
+async function restoreCreativeRendererSandbox(timeout = RENDER_SANDBOX_TIMEOUT_MS) {
   const text = await getObjectText(snapshotMetadataKey());
   if (!text) throw new Error("Creative renderer snapshot metadata unavailable for this deployment");
   const payload = JSON.parse(text) as { snapshotId?: string };
@@ -215,7 +236,7 @@ async function restoreCreativeRendererSandbox() {
         source,
         persistent: false,
         resources: { vcpus: RENDER_SANDBOX_VCPUS },
-        timeout: RENDER_SANDBOX_TIMEOUT_MS,
+        timeout,
       }),
     );
   } catch (error) {
@@ -227,7 +248,7 @@ async function restoreCreativeRendererSandbox() {
       error,
     );
     return withFileBackedRemotionConfig(
-      await Sandbox.create({ source, persistent: false, timeout: RENDER_SANDBOX_TIMEOUT_MS }),
+      await Sandbox.create({ source, persistent: false, timeout }),
     );
   }
 }
@@ -299,27 +320,86 @@ async function compositeContactSheet(
 }
 
 /**
+ * How long a render may go without its progress file changing before the
+ * watchdog gives up on it. Rendering rewrites the file many times a second,
+ * so this much silence means a hung renderer, and without the watchdog it
+ * would hold its sandbox for the full 45-minute timeout.
+ */
+export const RENDER_STALL_SECONDS = 15 * 60;
+const STALL_MARKER = "/tmp/studio-render-stalled";
+const UPLOAD_MARKER = "/tmp/studio-output-uploaded";
+
+/**
  * Runs alongside a detached render: waits for the renderer to report "done",
  * then PUTs the MP4 to storage through a signed URL and leaves a marker the
- * next poll reads. Nothing from the URL reaches the shell's parser; it is
- * passed in the environment.
+ * next poll reads. When the render finishes, fails or stalls it POSTs to the
+ * job's callback URL, so the job is closed and the sandbox stopped right
+ * away rather than when someone next polls. Nothing from either URL reaches
+ * the shell's parser; both are passed in the environment.
  */
-async function startOutputUploader(sandbox: Sandbox, outputFile: string, outputKey: string): Promise<void> {
+async function startOutputUploader(sandbox: Sandbox, outputFile: string, outputKey: string, callbackUrl?: string): Promise<void> {
   const putUrl = await presignPut(outputKey, 3 * 60 * 60);
   const script = `
+notify() {
+  [ -n "$CB" ] && curl -sS -o /dev/null --max-time 30 --retry 3 -X POST "$CB" || true
+}
+last=""
+quiet=0
 for i in $(seq 1 1800); do
   if grep -q '"stage":"done"' /vercel/sandbox/progress.json 2>/dev/null && [ -s "$OUT" ]; then
     if curl -sS --fail -o /dev/null --retry 3 -X PUT -H "Content-Type: video/mp4" --upload-file "$OUT" "$PUT"; then
-      echo uploaded > /tmp/studio-output-uploaded
+      echo uploaded > ${UPLOAD_MARKER}
     else
-      echo failed > /tmp/studio-output-uploaded
+      echo failed > ${UPLOAD_MARKER}
     fi
+    notify
     exit 0
   fi
-  grep -q '"stage":"error"' /vercel/sandbox/progress.json 2>/dev/null && exit 0
+  if grep -q '"stage":"error"' /vercel/sandbox/progress.json 2>/dev/null; then
+    notify
+    exit 0
+  fi
+  now=$(cksum /vercel/sandbox/progress.json 2>/dev/null)
+  if [ "$now" = "$last" ]; then quiet=$((quiet + 2)); else quiet=0; last="$now"; fi
+  if [ "$quiet" -ge "$STALL" ]; then
+    echo stalled > ${STALL_MARKER}
+    notify
+    exit 0
+  fi
   sleep 2
 done`;
-  await sandbox.runCommand({ cmd: "bash", args: ["-c", script], env: { OUT: outputFile, PUT: putUrl }, detached: true });
+  await sandbox.runCommand({
+    cmd: "bash",
+    args: ["-c", script],
+    env: { OUT: outputFile, PUT: putUrl, CB: callbackUrl ?? "", STALL: String(RENDER_STALL_SECONDS) },
+    detached: true,
+  });
+}
+
+/**
+ * Looks a render's sandbox up without waking it.
+ *
+ * Every SDK call on a stopped sandbox resumes it, which boots a fresh VM: a
+ * poll that arrived after the sandbox timed out used to start a new machine,
+ * fail to find the render command in it, and report a render whose MP4 was
+ * already stored as failed. Returns null when the sandbox is not running.
+ */
+async function runningSandbox(name: string): Promise<Sandbox | null> {
+  const sandbox = await Sandbox.get({ name, resume: false }).catch(() => null);
+  if (!sandbox) return null;
+  let status: string | undefined;
+  try {
+    status = sandbox.status;
+  } catch {
+    return null;
+  }
+  return status === "running" || status === "pending" ? sandbox : null;
+}
+
+/** Stops a sandbox by name, without waking it if it has already stopped. */
+export async function stopSandboxByName(name: string): Promise<void> {
+  const sandbox = await runningSandbox(name);
+  if (sandbox) await Promise.resolve(sandbox.stop()).catch(() => undefined);
 }
 
 /** The render's output as stored, when the sandbox stored it itself. */
@@ -342,6 +422,14 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
     assertValidDocument(request.document);
     const resolvedOptions = resolveCreativeRenderOptions(request.document, request.options);
     const sandbox = await restoreCreativeRendererSandbox();
+    if (request.onSandboxCreated) {
+      try {
+        await request.onSandboxCreated(sandbox.name);
+      } catch (error) {
+        await Promise.resolve(sandbox.stop()).catch(() => undefined);
+        throw error;
+      }
+    }
     // A draft is for judging timing, so it reads the same small preview
     // copies as frame previews; the final render always reads originals.
     const assets =
@@ -395,7 +483,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
       // The render stores its own output the moment it finishes. Otherwise
       // the MP4 only left the sandbox when someone polled, and a render
       // nobody polled before the sandbox timed out was lost whole.
-      await startOutputUploader(sandbox, outputFile, request.outputKey).catch((error) => {
+      await startOutputUploader(sandbox, outputFile, request.outputKey, request.callbackUrl).catch((error) => {
         console.warn("[creative-render] could not start the output uploader; a poll will upload instead", error);
       });
       return {
@@ -412,10 +500,8 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
   }
 
   async pollDetached(handle: CreativeDetachedRenderHandle): Promise<CreativeDetachedRenderStatus> {
-    let sandbox: Sandbox;
-    try {
-      sandbox = await Sandbox.get({ name: handle.sandboxId, resume: true });
-    } catch {
+    const sandbox = await runningSandbox(handle.sandboxId);
+    if (!sandbox) {
       // The sandbox is gone, but the render may have stored its output first.
       const stored = await storedOutput(handle.outputKey);
       if (stored) return stored;
@@ -425,7 +511,9 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
     try {
       command = await sandbox.getCommand(handle.cmdId);
     } catch (error) {
+      const stored = await storedOutput(handle.outputKey);
       await Promise.resolve(sandbox.stop()).catch(() => undefined);
+      if (stored) return stored;
       return { status: "failed", progress: 0, error: error instanceof Error ? error.message : "Render command is unavailable." };
     }
     let progress: Record<string, unknown> = { stage: "starting", overallProgress: 0 };
@@ -452,6 +540,15 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
       return { status: "failed", progress: overallProgress, error };
     }
     if (stage !== "done") {
+      const stalled = await sandbox.fs.readFile(STALL_MARKER, "utf8").catch(() => null);
+      if (stalled) {
+        await Promise.resolve(sandbox.stop()).catch(() => undefined);
+        return {
+          status: "failed",
+          progress: overallProgress,
+          error: `Render stopped making progress for ${RENDER_STALL_SECONDS / 60} minutes and was stopped.`,
+        };
+      }
       return {
         status: "rendering",
         progress: Math.min(0.99, overallProgress),
@@ -460,7 +557,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
       };
     }
     // Usually the sandbox has already stored the MP4 itself.
-    const uploaded = await sandbox.fs.readFile("/tmp/studio-output-uploaded", "utf8").catch(() => null);
+    const uploaded = await sandbox.fs.readFile(UPLOAD_MARKER, "utf8").catch(() => null);
     if (uploaded && String(uploaded).trim() === "uploaded") {
       const stored = await storedOutput(handle.outputKey);
       if (stored) return stored;
@@ -475,8 +572,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
   }
 
   async stopDetached(handle: CreativeDetachedRenderHandle): Promise<void> {
-    const sandbox = await Sandbox.get({ name: handle.sandboxId, resume: true }).catch(() => null);
-    if (sandbox) await Promise.resolve(sandbox.stop()).catch(() => undefined);
+    await stopSandboxByName(handle.sandboxId);
   }
 
   async render(request: CreativeRenderRequest): Promise<CreativeRenderResult> {
@@ -565,7 +661,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
     // timestamp fails fast instead of after a sandbox restore.
     const resolved = request.timesMs.map((timeMs) => resolveCreativeFrameAtTime(request.document, timeMs));
 
-    const sandbox = await restoreCreativeRendererSandbox();
+    const sandbox = await restoreCreativeRendererSandbox(IN_REQUEST_SANDBOX_TIMEOUT_MS);
     try {
       // Each still below is a separate renderer process, and each would
       // download every video it shows in full. Copy them in once instead.

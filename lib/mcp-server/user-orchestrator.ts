@@ -64,6 +64,27 @@ export interface UserCreditLedger {
 type ProviderResolver = (name: VideoProviderName) => VideoProvider;
 type CostResolver = (duration: number, resolution: VideoResolution) => number;
 type StoreVideo = (job: UserVideoJob, bytes: Buffer, contentType: string) => Promise<string | null>;
+type CallbackUrlFor = (jobId: string) => string | undefined;
+
+/**
+ * How long a finished video may keep failing to download or store before the
+ * job is given up on. Inside this window a failure is retried on the next
+ * poll, callback or sweep: the video is paid for and still on OpenRouter, so
+ * one storage hiccup must not throw it away.
+ */
+export const VIDEO_DOWNLOAD_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * At most one download attempt per this interval while retrying, so a client
+ * polling every few seconds through a storage outage does not re-download the
+ * clip, and spend a storage write, on every poll.
+ */
+export const VIDEO_DOWNLOAD_RETRY_INTERVAL_MS = 60 * 1000;
+
+const SAVE_RETRY_PREFIX = "Video is ready but could not be saved yet; retrying.";
+
+/** A storage answer no retry can fix: it stored the file somewhere unusable. */
+class PermanentStoreError extends Error {}
 
 const CREDIT_ACTION = "video_generation";
 const TERMINAL_FAILURES = new Set<VideoJobState>(["failed", "cancelled", "expired"]);
@@ -87,6 +108,8 @@ export class UserVideoOrchestrator {
   private resolveProvider: ProviderResolver;
   private resolveCost: CostResolver;
   private storeVideo: StoreVideo;
+  private callbackUrlFor?: CallbackUrlFor;
+  private nowMs: () => number;
 
   constructor(
     repo: UserVideoRepository,
@@ -94,7 +117,10 @@ export class UserVideoOrchestrator {
     resolveProvider: ProviderResolver,
     resolveCost: CostResolver,
     storeVideo: StoreVideo,
+    options: { callbackUrlFor?: CallbackUrlFor; nowMs?: () => number } = {},
   ) {
+    this.callbackUrlFor = options.callbackUrlFor;
+    this.nowMs = options.nowMs ?? Date.now;
     this.repo = repo;
     this.credits = credits;
     this.resolveProvider = resolveProvider;
@@ -136,7 +162,7 @@ export class UserVideoOrchestrator {
     }
 
     try {
-      const submission = await provider.submit(request);
+      const submission = await provider.submit(request, { callbackUrl: this.callbackUrlFor?.(reservation.job.id) });
       const updated = await this.repo.update(userId, reservation.job.id, {
         providerJobId: submission.id,
         status: submission.status === "in_progress" ? "in_progress" : submission.status,
@@ -161,6 +187,15 @@ export class UserVideoOrchestrator {
     if (!current) return null;
     if (current.status === "completed" && current.videoUrl) return current;
     if (TERMINAL_FAILURES.has(current.status)) return current;
+
+    const lastAttemptMs = Date.parse(current.updatedAt);
+    if (
+      current.error?.startsWith(SAVE_RETRY_PREFIX) &&
+      !Number.isNaN(lastAttemptMs) &&
+      this.nowMs() - lastAttemptMs < VIDEO_DOWNLOAD_RETRY_INTERVAL_MS
+    ) {
+      return current;
+    }
 
     if (!current.providerJobId) {
       const failed = await this.repo.update(userId, current.id, {
@@ -187,8 +222,9 @@ export class UserVideoOrchestrator {
       try {
         const { bytes, contentType } = await provider.download(current.providerJobId);
         const url = await this.storeVideo(current, bytes, contentType);
+        if (!url) throw new Error("Durable video storage did not accept the file.");
         if (!isHttpsUrl(url)) {
-          throw new Error("Durable video storage did not return a public HTTPS URL.");
+          throw new PermanentStoreError("Durable video storage did not return a public HTTPS URL.");
         }
         return this.repo.update(userId, current.id, {
           status: "completed",
@@ -197,6 +233,17 @@ export class UserVideoOrchestrator {
           costUsd: upstream.costUsd ?? current.costUsd,
         });
       } catch (error) {
+        const createdMs = Date.parse(current.createdAt);
+        const withinRetryWindow = Number.isNaN(createdMs) || this.nowMs() - createdMs < VIDEO_DOWNLOAD_RETRY_WINDOW_MS;
+        if (withinRetryWindow && !(error instanceof PermanentStoreError)) {
+          // Still in progress as far as the caller is concerned: the next
+          // poll, callback or sweep downloads it again.
+          return this.repo.update(userId, current.id, {
+            status: "in_progress",
+            error: `${SAVE_RETRY_PREFIX} ${errorMessage(error)}`,
+            costUsd: upstream.costUsd ?? current.costUsd,
+          });
+        }
         const failed = await this.repo.update(userId, current.id, {
           status: "failed",
           error: errorMessage(error),

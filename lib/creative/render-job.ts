@@ -113,3 +113,35 @@ export function isRenderJobStale(job: RenderJobHeartbeat, nowMs: number): boolea
   return nowMs - beatMs > RENDER_JOB_STALE_MS;
 }
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * Renders one account may have running at once. Each holds an 8-vCPU sandbox
+ * for up to 45 minutes, and nothing else stops an assistant stuck in a loop
+ * from starting them faster than they finish.
+ */
+export const MAX_ACTIVE_RENDERS_PER_USER = 3;
+
+export class TooManyActiveRendersError extends Error {
+  constructor() {
+    super(
+      `You already have ${MAX_ACTIVE_RENDERS_PER_USER} renders running. Wait for one to finish ` +
+        "(poll its status) before starting another.",
+    );
+  }
+}
+
+/**
+ * Throws when the account is at its limit. Rows older than a sandbox can live
+ * are not counted, so a job nobody closed out cannot lock the account.
+ */
+export async function assertRenderCapacity(supabase: SupabaseClient, userId: string, nowMs = Date.now()): Promise<void> {
+  const since = new Date(nowMs - DETACHED_RENDER_LIFETIME_MS).toISOString();
+  const { count, error } = await supabase
+    .from("creative_render_jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .in("status", ["queued", "rendering"])
+    .gt("created_at", since);
+  if (error) return; // Never block a render on a failed count.
+  if ((count ?? 0) >= MAX_ACTIVE_RENDERS_PER_USER) throw new TooManyActiveRendersError();
+}

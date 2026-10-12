@@ -1,4 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "fluid": true
+  "fluid": true,
+  "crons": [
+    { "path": "/api/cron/sweep-jobs", "schedule": "37 4 * * *" }
+  ]
 }

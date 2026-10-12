@@ -81,4 +81,36 @@ describe("submitVideoJob", () => {
     await submitVideoJob(base);
     expect(body().model).toBe("bytedance/seedance-2.0-fast");
   });
+
+  it("passes the callback URL to OpenRouter only when there is one", async () => {
+    let body = captureBody();
+    await submitVideoJob({ ...base, callbackUrl: "https://app.example.com/api/videos/callback/j?token=t" });
+    expect(body().callback_url).toBe("https://app.example.com/api/videos/callback/j?token=t");
+    vi.unstubAllGlobals();
+    body = captureBody();
+    await submitVideoJob(base);
+    expect(body().callback_url).toBeUndefined();
+  });
+
+  it("submits again without the callback if OpenRouter refuses it", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const sent = JSON.parse(init.body as string);
+      bodies.push(sent);
+      return sent.callback_url
+        ? new Response(JSON.stringify({ error: "callback_url is not supported" }), { status: 400 })
+        : new Response(JSON.stringify({ id: "job-2", status: "pending" }));
+    }));
+    await expect(submitVideoJob({ ...base, callbackUrl: "https://app.example.com/cb?token=t" }))
+      .resolves.toMatchObject({ id: "job-2" });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].callback_url).toBeUndefined();
+  });
+
+  it("does not resubmit on an unrelated 400", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: "duration not supported" }), { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(submitVideoJob({ ...base, callbackUrl: "https://app.example.com/cb?token=t" })).rejects.toThrow(/400/);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });
