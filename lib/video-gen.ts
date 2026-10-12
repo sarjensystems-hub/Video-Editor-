@@ -26,6 +26,63 @@ export const VIDEO_MAX_DURATION = 15;
 
 export const MAX_VIDEO_CHARACTERS = 12;
 
+/**
+ * How a model takes images:
+ *  - "references": any number (up to maxImages) of `input_references`, with
+ *    the name legend prepended to the prompt (Seedance, Grok Imagine 1.5).
+ *  - "first_frame": exactly one image sent as `frame_images` with
+ *    `frame_type: "first_frame"` — the video starts on that picture. No
+ *    legend, since there is no list of references to name (Grok Imagine
+ *    1.5 Lite).
+ */
+export type VideoImageInput = "references" | "first_frame";
+
+export interface VideoModelSpec {
+  id:          string;
+  label:       string;
+  minDuration: number;
+  maxDuration: number;
+  imageInput:  VideoImageInput;
+  /** Most images one request may carry. */
+  maxImages:   number;
+}
+
+export const VIDEO_MODELS = [
+  {
+    id: "bytedance/seedance-2.0-fast",
+    label: "Seedance 2.0 Fast",
+    minDuration: VIDEO_MIN_DURATION,
+    maxDuration: VIDEO_MAX_DURATION,
+    imageInput: "references",
+    maxImages: MAX_VIDEO_CHARACTERS,
+  },
+  {
+    id: "x-ai/grok-imagine-video-1.5",
+    label: "Grok Imagine Video 1.5",
+    minDuration: 1,
+    maxDuration: 15,
+    imageInput: "references",
+    maxImages: 7,
+  },
+  {
+    id: "x-ai/grok-imagine-video-1.5-lite",
+    label: "Grok Imagine Video 1.5 Lite",
+    minDuration: 1,
+    maxDuration: 15,
+    imageInput: "first_frame",
+    maxImages: 1,
+  },
+] as const satisfies readonly VideoModelSpec[];
+
+export const VIDEO_MODEL_IDS = VIDEO_MODELS.map((m) => m.id);
+
+/** The catalog entry for a model id, or undefined for an id we don't know
+ *  (still sent as-is, with Seedance-style references). */
+export function videoModelSpec(id: string | undefined): VideoModelSpec | undefined {
+  const key = id?.trim();
+  return VIDEO_MODELS.find((m) => m.id === key);
+}
+
 export type VideoJobState = "pending" | "in_progress" | "completed" | "failed" | "cancelled" | "expired";
 
 export interface VideoCharacterRef {

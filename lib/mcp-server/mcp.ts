@@ -663,10 +663,23 @@ export const VIDEO_MCP_TOOLS = [
         },
         aspect_ratio: { type: "string", enum: ["16:9", "9:16"], default: "9:16" },
         resolution: { type: "string", enum: ["720p", "480p"], default: "720p" },
-        duration: { type: "integer", minimum: 4, maximum: 15, default: 5 },
+        duration: {
+          type: "integer",
+          minimum: 1,
+          maximum: 15,
+          default: 5,
+          description: "Seconds. bytedance/seedance-2.0-fast takes 4-15; the x-ai/grok-imagine-video models take 1-15.",
+        },
         generate_audio: { type: "boolean", default: true },
         provider: { type: "string", enum: ["openrouter"], default: "openrouter" },
-        model: { type: "string", description: "Optional provider model override." },
+        model: {
+          type: "string",
+          description:
+            "Optional model; defaults to bytedance/seedance-2.0-fast. Known models: " +
+            "bytedance/seedance-2.0-fast (up to 12 reference images), " +
+            "x-ai/grok-imagine-video-1.5 (up to 7 reference images), " +
+            "x-ai/grok-imagine-video-1.5-lite (cheaper and faster; at most ONE image, which becomes the video's first frame rather than a style or character reference - describe everything else in the prompt).",
+        },
         idempotency_key: {
           type: "string",
           description: "Stable unique key for this intended generation; retries must reuse the same key.",

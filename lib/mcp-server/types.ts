@@ -4,6 +4,7 @@ import {
   VIDEO_MAX_DURATION,
   VIDEO_MIN_DURATION,
   VIDEO_RESOLUTIONS,
+  videoModelSpec,
 } from "../video-gen";
 import type { VideoAspectRatio, VideoJobState, VideoResolution } from "../video-gen";
 
@@ -123,15 +124,22 @@ export function parseGenerateVideoRequest(input: unknown): GenerateVideoRequest 
   const provider = oneOf(r.provider, ["openrouter"] as const, "provider", "openrouter");
   const aspectRatio = oneOf(r.aspect_ratio ?? r.aspectRatio, VIDEO_ASPECT_RATIOS, "aspect_ratio", "9:16");
   const resolution = oneOf(r.resolution, VIDEO_RESOLUTIONS, "resolution", "720p");
+  const model = optionalString(r.model, "model");
+  // Limits follow the chosen model; an unknown or omitted model keeps the
+  // default model's limits.
+  const spec = videoModelSpec(model);
+  const minDuration = spec?.minDuration ?? VIDEO_MIN_DURATION;
+  const maxDuration = spec?.maxDuration ?? VIDEO_MAX_DURATION;
+  const maxImages = spec?.maxImages ?? MAX_VIDEO_CHARACTERS;
   const durationRaw = r.duration ?? r.duration_seconds ?? 5;
   if (
     typeof durationRaw !== "number" ||
     !Number.isInteger(durationRaw) ||
-    durationRaw < VIDEO_MIN_DURATION ||
-    durationRaw > VIDEO_MAX_DURATION
+    durationRaw < minDuration ||
+    durationRaw > maxDuration
   ) {
     throw new VideoValidationError(
-      `duration must be an integer from ${VIDEO_MIN_DURATION} to ${VIDEO_MAX_DURATION} seconds.`,
+      `duration must be an integer from ${minDuration} to ${maxDuration} seconds${spec ? ` for ${spec.id}` : ""}.`,
     );
   }
 
@@ -142,11 +150,14 @@ export function parseGenerateVideoRequest(input: unknown): GenerateVideoRequest 
 
   const refsRaw = r.references ?? [];
   if (!Array.isArray(refsRaw)) throw new VideoValidationError("references must be an array.");
-  if (refsRaw.length > MAX_VIDEO_CHARACTERS) {
-    throw new VideoValidationError(`references supports at most ${MAX_VIDEO_CHARACTERS} images.`);
+  if (refsRaw.length > maxImages) {
+    throw new VideoValidationError(
+      spec?.imageInput === "first_frame"
+        ? `${spec.id} takes a single image, used as the video's first frame; pass at most one reference.`
+        : `references supports at most ${maxImages} images${spec ? ` for ${spec.id}` : ""}.`,
+    );
   }
   const references = refsRaw.map(parseReference);
-  const model = optionalString(r.model, "model");
 
   return {
     prompt,

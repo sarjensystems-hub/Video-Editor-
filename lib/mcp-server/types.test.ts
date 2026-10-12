@@ -51,4 +51,33 @@ describe("parseGenerateVideoRequest", () => {
     ).toThrow(/4.*15/);
     expect(() => parseGenerateVideoRequest({ prompt: "x" })).toThrow(/idempotency/i);
   });
+
+  it("applies Grok Imagine limits per model", () => {
+    expect(parseGenerateVideoRequest({
+      prompt: "Short clip",
+      idempotency_key: "idem-grok-1",
+      model: "x-ai/grok-imagine-video-1.5",
+      duration: 2,
+    }).duration).toBe(2);
+
+    expect(() => parseGenerateVideoRequest({
+      prompt: "Short clip",
+      idempotency_key: "idem-seedance-short",
+      duration: 2,
+    })).toThrow(/from 4 to 15/);
+
+    expect(() => parseGenerateVideoRequest({
+      prompt: "Two refs",
+      idempotency_key: "idem-lite-2",
+      model: "x-ai/grok-imagine-video-1.5-lite",
+      references: [{ url: "https://example.com/a.jpg" }, { url: "https://example.com/b.jpg" }],
+    })).toThrow(/single image/);
+
+    expect(parseGenerateVideoRequest({
+      prompt: "One ref",
+      idempotency_key: "idem-lite-1",
+      model: "x-ai/grok-imagine-video-1.5-lite",
+      references: [{ url: "https://example.com/a.jpg", role: "first_frame" }],
+    }).references).toHaveLength(1);
+  });
 });

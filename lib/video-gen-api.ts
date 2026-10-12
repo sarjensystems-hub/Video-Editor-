@@ -1,6 +1,7 @@
 /**
  * Server-only OpenRouter calls for video generation — ByteDance Seedance
- * 2.0 Fast via OpenRouter's dedicated async video API (POST/GET
+ * 2.0 Fast by default, or any model in VIDEO_MODELS (lib/video-gen.ts),
+ * via OpenRouter's dedicated async video API (POST/GET
  * /api/v1/videos — NOT the chat-completions endpoint used elsewhere in
  * lib/openrouter.ts).
  *
@@ -20,11 +21,16 @@
  * line is untouched — nothing else is added, rewritten, or trimmed. With
  * zero characters attached, the prompt is sent completely as-is.
  *
+ * Grok Imagine Video 1.5 Lite is the exception: it takes one image, as the
+ * clip's first frame (`frame_images`), not a list of references, so it gets
+ * no legend and more than one image is refused before anything is spent.
+ *
  * Client-safe constants/types live in lib/video-gen.ts — import those from
  * Client Components, import this module only from server code (route
  * handlers), since it resolves the request's OpenRouter key and uses Buffer.
  */
 import { requireOpenRouterKey } from "@/lib/openrouter-key";
+import { videoModelSpec } from "@/lib/video-gen";
 import type { VideoAspectRatio, VideoResolution, VideoJobState, VideoCharacterRef } from "@/lib/video-gen";
 import { appUrl } from "@/lib/app-url";
 
@@ -78,11 +84,28 @@ export interface VideoJobSubmission {
 
 /** Submit a new generation job. Returns immediately with a job id to poll. */
 export async function submitVideoJob(params: SubmitVideoJobParams): Promise<VideoJobSubmission> {
-  const legend = buildCharacterLegend(params.characters, params.referenceInstruction);
+  const model = params.model?.trim() || DEFAULT_VIDEO_MODEL;
+  const spec = videoModelSpec(model);
+
+  if (spec && params.characters.length > spec.maxImages) {
+    throw new Error(
+      spec.imageInput === "first_frame"
+        ? `${spec.label} takes a single image, used as the first frame; got ${params.characters.length}.`
+        : `${spec.label} takes at most ${spec.maxImages} reference images; got ${params.characters.length}.`,
+    );
+  }
+  if (spec && (params.duration < spec.minDuration || params.duration > spec.maxDuration)) {
+    throw new Error(`${spec.label} supports ${spec.minDuration}-${spec.maxDuration} second clips; got ${params.duration}.`);
+  }
+
+  // A first-frame model gets the picture itself, not a list of named
+  // references, so the legend would only describe images it never sees.
+  const firstFrame = spec?.imageInput === "first_frame";
+  const legend = firstFrame ? "" : buildCharacterLegend(params.characters, params.referenceInstruction);
   const prompt = legend ? `${legend}\n\n${params.prompt}` : params.prompt;
 
   const body: Record<string, unknown> = {
-    model: params.model?.trim() || DEFAULT_VIDEO_MODEL,
+    model,
     prompt,
     duration: params.duration,
     resolution: params.resolution,
@@ -91,10 +114,18 @@ export async function submitVideoJob(params: SubmitVideoJobParams): Promise<Vide
   };
 
   if (params.characters.length > 0) {
-    body.input_references = params.characters.map((c) => ({
-      type: "image_url",
-      image_url: { url: c.url },
-    }));
+    if (firstFrame) {
+      body.frame_images = [{
+        type: "image_url",
+        image_url: { url: params.characters[0].url },
+        frame_type: "first_frame",
+      }];
+    } else {
+      body.input_references = params.characters.map((c) => ({
+        type: "image_url",
+        image_url: { url: c.url },
+      }));
+    }
   }
 
   const res = await fetch(API_BASE, {
