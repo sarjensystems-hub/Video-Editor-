@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchAIResponseWithImages } from "@/lib/openrouter";
 import { uploadAnyBytes } from "@/lib/storage";
 import { parseDecompositionPlan, pixelCropFromNormalized } from "@/lib/creative/decompose";
-import { isTrustedMediaUrl } from "@/lib/creative/media-url";
+import { isTrustedMediaUrl, ownedMediaPath } from "@/lib/creative/media-url";
+import { presignGet } from "@/lib/b2";
 import { getRuntimeCreativeProject, registerRuntimeCreativeAsset } from "@/lib/creative/project-runtime";
 import { InsufficientCreditsError, withCredits } from "@/lib/creative/metering";
 import { CREDIT_COSTS } from "@/lib/credit-costs";
@@ -34,7 +35,10 @@ async function handlePOST(request: Request) {
   if (error || !source) return NextResponse.json({ error: "Source asset not found" }, { status: 404 });
   if (source.project_id && String(source.project_id) !== projectId) return NextResponse.json({ error: "Source asset belongs to another project" }, { status: 400 });
   if (source.kind !== "image" || (source.mime_type && !String(source.mime_type).startsWith("image/"))) return NextResponse.json({ error: "Only image assets can be decomposed" }, { status: 400 });
-  if (!isTrustedMediaUrl(String(source.url))) return NextResponse.json({ error: "Decomposition requires an image stored in Studio-managed media storage" }, { status: 400 });
+  // Either a file in this user's own folder or one in the old Supabase
+  // Storage: the source is fetched server-side, so it is checked, not trusted.
+  const sourcePath = ownedMediaPath(String(source.url), user.id);
+  if (!sourcePath && !isTrustedMediaUrl(String(source.url))) return NextResponse.json({ error: "Decomposition requires an image stored in Studio-managed media storage" }, { status: 400 });
 
   const prompt = `Analyze this flat design image for editable reconstruction. Return JSON only with {"candidates":[...]}. Each candidate must have role, label, confidence, x, y, width, height. Coordinates are normalized 0..1 relative to the full image. Allowed roles only: subject, product, logo, text, foreground, other. Identify visually separable semantic regions worth exposing as reviewable crop layers. Prefer a small useful set over tiny fragments. Do not claim transparency or perfect segmentation.`;
   try {
@@ -49,7 +53,8 @@ async function handlePOST(request: Request) {
     const candidates = parseDecompositionPlan(rawPlan);
     if (candidates.length === 0) return NextResponse.json({ candidates: [], warning: "No sufficiently confident editable regions were identified." });
 
-    const sourceResponse = await fetch(String(source.url));
+    // Read straight from storage by path rather than through the stored URL's host.
+    const sourceResponse = await fetch(sourcePath ? await presignGet(sourcePath, 10 * 60) : String(source.url));
     if (!sourceResponse.ok) throw new Error(`Could not download source image (${sourceResponse.status})`);
     const sourceBytes = Buffer.from(await sourceResponse.arrayBuffer());
     const normalized = await sharp(sourceBytes).rotate().png().toBuffer({ resolveWithObject: true });

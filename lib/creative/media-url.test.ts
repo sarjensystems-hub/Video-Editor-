@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { downloadFilename, isTrustedMediaUrl } from "./media-url";
+import { downloadFilename, isTrustedMediaUrl, ownedMediaPath } from "./media-url";
 
 const ORIGINAL = { ...process.env };
 
@@ -37,6 +37,25 @@ describe("trusting a stored media URL", () => {
   it("does not trust everything when the env var is malformed", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "not-a-url";
     expect(isTrustedMediaUrl("https://evil.test/storage/x.mp4")).toBe(false);
+  });
+});
+
+describe("finding the caller's own stored file", () => {
+  const USER = "11111111-1111-4111-8111-111111111111";
+
+  it("accepts a /media URL in the caller's folder, on any domain the app answers on", () => {
+    expect(ownedMediaPath(`https://video-editor-sarjen1.vercel.app/media/${USER}/renders/job.mp4`, USER, "renders"))
+      .toBe(`${USER}/renders/job.mp4`);
+    expect(ownedMediaPath(`https://studio.example.com/media/${USER}/assets/a.png`, USER)).toBe(`${USER}/assets/a.png`);
+  });
+
+  it("refuses another user's file, the wrong kind, and anything that is not a /media URL", () => {
+    expect(ownedMediaPath("https://app.example.com/media/someone-else/renders/job.mp4", USER, "renders")).toBeNull();
+    expect(ownedMediaPath(`https://app.example.com/media/${USER}/videos/clip.mp4`, USER, "renders")).toBeNull();
+    expect(ownedMediaPath(`https://app.example.com/media/${USER}/renders/`, USER, "renders")).toBeNull();
+    expect(ownedMediaPath(`https://app.example.com/media/${USER}/renders/../../x`, USER, "renders")).toBeNull();
+    expect(ownedMediaPath("https://proj.supabase.co/storage/v1/object/public/x.mp4", USER)).toBeNull();
+    expect(ownedMediaPath(null, USER)).toBeNull();
   });
 });
 

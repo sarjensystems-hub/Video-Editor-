@@ -1,20 +1,26 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { downloadFilename, isTrustedMediaUrl } from "@/lib/creative/media-url";
+import { downloadFilename, isTrustedMediaUrl, ownedMediaPath } from "@/lib/creative/media-url";
+import { presignGet } from "@/lib/b2";
 
 export const runtime = "nodejs";
 
+/** How long the signed link behind a download redirect stays valid. */
+const DOWNLOAD_LINK_SECONDS = 10 * 60;
+
 /**
- * Streams a finished render back as an attachment.
+ * Saves a finished render as a file.
  *
- * This route exists because the `download` attribute on an anchor is ignored
- * cross-origin: the files live on the storage host, so a direct link opens the
- * video instead of saving it. Re-serving from our own origin is what makes the
- * browser save it, and it also means a render URL is not handed out to anyone
- * who is not its owner.
+ * The `download` attribute on an anchor is ignored cross-origin, so a direct
+ * link to storage would open the video instead of saving it. A render stored
+ * at `/media/<path>` (every render since files left Supabase Storage) gets a
+ * short-lived signed storage URL that itself answers "save as", so the bytes
+ * go straight from storage to the browser: no function time, no size limit,
+ * and storage downloads are free.
  *
- * The body is piped rather than buffered — a minute of 1080x1920 is tens of
- * megabytes, and holding that per concurrent download would be wasteful.
+ * Renders from before that move still sit in Supabase Storage and are piped
+ * through as before. The body is piped rather than buffered — a minute of
+ * 1080x1920 is tens of megabytes.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
@@ -35,9 +41,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const source = String(job.output_url);
-  // The URL comes from our own render pipeline, but this route turns a stored
-  // string into a server-side fetch, so it is checked rather than trusted.
-  if (!isTrustedMediaUrl(source)) {
+  // The URL comes from our own render pipeline, but it is a stored string, so
+  // it is checked rather than trusted: either a file in this user's renders
+  // folder, or one in the old Supabase Storage.
+  const storagePath = ownedMediaPath(source, user.id, "renders");
+  if (!storagePath && !isTrustedMediaUrl(source)) {
     return NextResponse.json({ error: "That render is not in Studio storage." }, { status: 400 });
   }
 
@@ -54,6 +62,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     sceneId ? String(sceneId) : "film",
     job.finished_at ? String(job.finished_at) : null,
   );
+
+  if (storagePath) {
+    const signed = await presignGet(storagePath, DOWNLOAD_LINK_SECONDS, { downloadName: filename }).catch(() => null);
+    if (!signed) {
+      return NextResponse.json({ error: "The rendered file could not be read from storage." }, { status: 502 });
+    }
+    return new Response(null, { status: 307, headers: { Location: signed, "Cache-Control": "private, no-store" } });
+  }
 
   const upstream = await fetch(source).catch(() => null);
   if (!upstream?.ok || !upstream.body) {
