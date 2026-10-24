@@ -105,7 +105,7 @@ describe("Studio media MCP", () => {
     expect(names).toContain("studio_restore_creative_revision");
   });
 
-  it("advertises every ElevenLabs speech model, Eleven v4 by default, and no Gemini", async () => {
+  it("advertises Eleven v4 as the only speech model", async () => {
     const result = await handleMcpMessage(
       { jsonrpc: "2.0", id: "speech-schema", method: "tools/list", params: {} },
       deps,
@@ -113,14 +113,11 @@ describe("Studio media MCP", () => {
     const speech = (result as any).result.tools.find(
       (tool: { name: string }) => tool.name === "studio_generate_speech_asset",
     );
-    expect(speech.description).toMatch(/ElevenLabs Eleven v4: the default/);
+    expect(speech.description).toMatch(/ElevenLabs Eleven v4/);
     expect(speech.description).toMatch(/prose direction is read aloud/);
     expect(speech.description).toMatch(/Hindi/);
     expect(JSON.stringify(speech)).not.toMatch(/gemini|Kore/i);
-    expect(speech.inputSchema.properties.model.enum).toEqual([
-      "eleven-v4", "eleven-v4-turbo", "eleven-v3", "eleven-v3-conversational",
-      "eleven-multilingual-v2", "eleven-flash-v2.5", "eleven-turbo-v2",
-    ]);
+    expect(speech.inputSchema.properties.model.enum).toEqual(["eleven-v4"]);
     expect(speech.inputSchema.properties.model.default).toBe("eleven-v4");
     expect(speech.inputSchema.properties.language.enum).toBeUndefined();
     expect(speech.inputSchema.properties.voice.enum).toBeUndefined();

@@ -8,21 +8,19 @@
  *
  * Model choices, from the live OpenRouter catalogue:
  *
- * - Speech: every ElevenLabs text-to-speech model OpenRouter carries, with
- *   `elevenlabs/eleven-v4` the default. Eleven v4 ranked first on Artificial
- *   Analysis's blind-vote TTS arena and its pronunciation benchmark, and it
- *   speaks exactly what is written rather than adding breaths of its own -
- *   which matters when captions are timed to the script. Prose direction is
- *   spoken aloud by every ElevenLabs model, so none of them takes any; the v3
- *   and v4 families take inline audio tags such as [excited] or [whispers].
- *   OpenRouter exposes the same 21 preset voices on each model, and any of
- *   them speaks every language its model supports - there is no separate
+ * - Speech: `elevenlabs/eleven-v4`, the only speech model. Ranked first on
+ *   Artificial Analysis's blind-vote TTS arena and its pronunciation
+ *   benchmark, and it speaks exactly what is written rather than adding
+ *   breaths of its own - which matters when captions are timed to the script.
+ *   Prose direction is spoken aloud, so it takes none; inline audio tags such
+ *   as [excited] or [whispers] steer delivery. OpenRouter exposes 21 preset
+ *   voices, and each speaks all 90+ of its languages - there is no separate
  *   "Indian voice": a Hindi or Tamil script is spoken in Hindi or Tamil.
  * - Music: `google/lyria-3-clip-preview` at $0.04 per 30-second clip. The Pro
  *   variant generates full songs for $0.08 and is overkill for short social.
  *
  * The optional language value is retained as asset metadata for callers that
- * want it; the speech models detect the language from the script itself.
+ * want it; the speech model detects the language from the script itself.
  */
 
 export const DEFAULT_MUSIC_MODEL = "google/lyria-3-clip-preview";
@@ -33,7 +31,7 @@ export function normalizeSpeechLanguage(value: unknown): string {
   return raw ? raw.replace(/_/g, "-") : "auto";
 }
 
-/** ElevenLabs' preset voices as OpenRouter exposes them, on every model. */
+/** ElevenLabs' preset voices as OpenRouter exposes them. */
 export const ELEVENLABS_VOICES = [
   "sarah", "george", "adam", "alice", "bella", "bill", "brian", "callum", "charlie", "chris", "daniel",
   "eric", "harry", "jessica", "laura", "liam", "lily", "matilda", "river", "roger", "will",
@@ -49,70 +47,14 @@ export const ELEVEN_V4_INDIAN_LANGUAGES = [
 export interface SpeechModelConfig {
   slug: string;
   label: string;
-  /** What the model is for and what it speaks, for the tool description. */
-  summary: string;
-  /** Whether [audio tags] steer delivery; on the other models they are read aloud. */
-  audioTags: boolean;
   voices: readonly string[];
   defaultVoice: string;
 }
-
-const INDIAN_V4 = ELEVEN_V4_INDIAN_LANGUAGES.join(", ");
 
 export const SPEECH_MODELS = {
   "eleven-v4": {
     slug: "elevenlabs/eleven-v4",
     label: "ElevenLabs Eleven v4",
-    summary: `the default and most expressive; 90+ languages including ${INDIAN_V4}`,
-    audioTags: true,
-    voices: ELEVENLABS_VOICES,
-    defaultVoice: "sarah",
-  },
-  "eleven-v4-turbo": {
-    slug: "elevenlabs/eleven-v4-turbo",
-    label: "ElevenLabs Eleven v4 Turbo",
-    summary: "Eleven v4's delivery, languages and audio tags, faster and cheaper",
-    audioTags: true,
-    voices: ELEVENLABS_VOICES,
-    defaultVoice: "sarah",
-  },
-  "eleven-v3": {
-    slug: "elevenlabs/eleven-v3",
-    label: "ElevenLabs Eleven v3",
-    summary: "the previous expressive model; 70+ languages, 5,000 characters per request",
-    audioTags: true,
-    voices: ELEVENLABS_VOICES,
-    defaultVoice: "sarah",
-  },
-  "eleven-v3-conversational": {
-    slug: "elevenlabs/eleven-v3-conversational",
-    label: "ElevenLabs Eleven v3 Conversational",
-    summary: "v3 tuned for natural back-and-forth dialogue",
-    audioTags: true,
-    voices: ELEVENLABS_VOICES,
-    defaultVoice: "sarah",
-  },
-  "eleven-multilingual-v2": {
-    slug: "elevenlabs/eleven-multilingual-v2",
-    label: "ElevenLabs Eleven Multilingual v2",
-    summary: "steady, consistent long-form narration; 29 languages including Hindi and Tamil",
-    audioTags: false,
-    voices: ELEVENLABS_VOICES,
-    defaultVoice: "sarah",
-  },
-  "eleven-flash-v2.5": {
-    slug: "elevenlabs/eleven-flash-v2.5",
-    label: "ElevenLabs Eleven Flash v2.5",
-    summary: "ultra-low latency and cheaper; 32 languages including Hindi and Tamil, 40,000 characters per request",
-    audioTags: false,
-    voices: ELEVENLABS_VOICES,
-    defaultVoice: "sarah",
-  },
-  "eleven-turbo-v2": {
-    slug: "elevenlabs/eleven-turbo-v2",
-    label: "ElevenLabs Eleven Turbo v2",
-    summary: "fast, English only",
-    audioTags: false,
     voices: ELEVENLABS_VOICES,
     defaultVoice: "sarah",
   },

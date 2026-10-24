@@ -52,18 +52,18 @@ describe("music generation transport", () => {
 });
 
 describe("speech generation transport", () => {
-  it("requests the chosen ElevenLabs model as mp3 through OpenRouter's speech endpoint", async () => {
+  it("requests Eleven v4 as mp3 through OpenRouter's speech endpoint", async () => {
     const mp3 = Buffer.concat([Buffer.from("ID3"), Buffer.alloc(200)]);
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(new Uint8Array(mp3), { status: 200, headers: { "content-type": "audio/mpeg", "x-generation-id": "gen-speech" } }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await asUser(() => generateSpeechBytes({ text: "नमस्ते", voice: "george", model: "eleven-flash-v2.5" }));
+    const result = await asUser(() => generateSpeechBytes({ text: "नमस्ते", voice: "george", model: "eleven-v4" }));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://openrouter.ai/api/v1/audio/speech");
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(body).toEqual({ model: "elevenlabs/eleven-flash-v2.5", input: "नमस्ते", voice: "george", response_format: "mp3" });
+    expect(body).toEqual({ model: "elevenlabs/eleven-v4", input: "नमस्ते", voice: "george", response_format: "mp3" });
     expect(result.contentType).toBe("audio/mpeg");
     expect(result.generationId).toBe("gen-speech");
   });

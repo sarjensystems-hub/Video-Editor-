@@ -3,7 +3,7 @@ import { CREATIVE_CANVAS_MAX_DIMENSION, CREATIVE_ELEMENT_TYPES } from "../creati
 import { renderCreativeCapabilityGuide } from "../creative/capability-map";
 import { documentSha256 } from "../creative/document-hash";
 import { creativeRenderCost, videoGenerationCost } from "../credit-costs";
-import { DEFAULT_SPEECH_MODEL_ID, ELEVENLABS_VOICES, SPEECH_MODEL_IDS, SPEECH_MODELS } from "../creative/audio-workers";
+import { DEFAULT_SPEECH_MODEL_ID, ELEVEN_V4_INDIAN_LANGUAGES, ELEVENLABS_VOICES, SPEECH_MODEL_IDS } from "../creative/audio-workers";
 import { CREATIVE_ASSET_CLASSES, CREATIVE_ASSET_CLASS_IDS, assetClassesForKind } from "../creative/asset-class";
 import { MAX_TRANSACTION_OPERATIONS } from "../creative/schema-guide";
 import { inlineImagesOf } from "./inline-images";
@@ -449,19 +449,19 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_generate_speech_asset",
-    description: `Generate a voiceover and register it as an audio asset with an ElevenLabs model: ${SPEECH_MODEL_IDS.map((id) => `"${id}" (${SPEECH_MODELS[id].label}: ${SPEECH_MODELS[id].summary})`).join("; ")}. Every model detects the language from the script, so write a Hindi, Tamil or Gujarati script in that language and script and any voice speaks it - there are no separate Indian voices. Write only the words to be spoken - any prose direction is read aloud. On ${SPEECH_MODEL_IDS.filter((id) => SPEECH_MODELS[id].audioTags).join(", ")}, steer delivery with short inline audio tags in square brackets placed before the words they colour, such as [excited], [warmly], [calm], [whispers], [sighs], [laughs], [short pause] or [pause]; the other models read tags aloud, so give them plain text. Punctuation and ellipses shape pacing on all of them. Each speaks exactly the script, which keeps captions aligned. Returns the asset; the document is not mutated - place it on the timeline with an add_audio_clip edit transaction.`,
+    description: `Generate a voiceover with ElevenLabs Eleven v4 and register it as an audio asset. It detects the language from the script - 90+ languages including ${ELEVEN_V4_INDIAN_LANGUAGES.join(", ")} - so write a Hindi, Tamil or Gujarati script in that language and script and any voice speaks it; there are no separate Indian voices. Write only the words to be spoken - any prose direction is read aloud. Steer delivery with short inline audio tags in square brackets placed before the words they colour, such as [excited], [warmly], [calm], [whispers], [sighs], [laughs], [short pause] or [pause]; punctuation and ellipses shape pacing too. It speaks exactly the script, which keeps captions aligned. Returns the asset; the document is not mutated - place it on the timeline with an add_audio_clip edit transaction.`,
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {
         project_id: { type: "string" },
-        text: { type: "string", description: "Exactly the words to speak, with optional [audio tags] on models that take them; never prose direction, which would be spoken." },
+        text: { type: "string", description: "Exactly the words to speak, with optional [audio tags]; never prose direction, which would be spoken." },
         transcript: { type: "string", description: "Optional spoken words only, used for duration-aligned marker estimates when text also contains direction or tags. If omitted, inline [audio tags] are stripped conservatively." },
-        language: { type: "string", default: "auto", description: "Optional BCP-47 language label stored as metadata. Every model detects the spoken language from the text automatically." },
-        model: { type: "string", enum: [...SPEECH_MODEL_IDS], default: DEFAULT_SPEECH_MODEL_ID, description: "Speech model. eleven-v4 ranks highest in blind listening tests, about 5 cents for a 76-second voiceover; eleven-v4-turbo and eleven-flash-v2.5 are faster and cheaper; eleven-turbo-v2 is English only." },
+        language: { type: "string", default: "auto", description: "Optional BCP-47 language label stored as metadata. Eleven v4 detects the spoken language from the text automatically." },
+        model: { type: "string", enum: [...SPEECH_MODEL_IDS], default: DEFAULT_SPEECH_MODEL_ID, description: "Speech model. Eleven v4 is the only one; about 5 cents for a 76-second voiceover." },
         voice: {
           type: "string",
-          description: `Preset voice, the same on every model (default sarah): ${ELEVENLABS_VOICES.join(", ")}. Each speaks every language its model supports.`,
+          description: `Preset voice (default sarah): ${ELEVENLABS_VOICES.join(", ")}. Each speaks every language Eleven v4 supports.`,
         },
         label: { type: "string" },
         marker_granularity: { type: "string", enum: ["words", "sentences", "both"], default: "both", description: "Return duration-aligned estimated marker objects to wrap in add_marker operations." },

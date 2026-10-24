@@ -16,22 +16,12 @@ describe("speech worker configuration", () => {
     expect(ELEVENLABS_VOICES).toHaveLength(21);
   });
 
-  it("wires every ElevenLabs speech model OpenRouter carries, and nothing else", () => {
-    expect(SPEECH_MODEL_IDS).toEqual([
-      "eleven-v4",
-      "eleven-v4-turbo",
-      "eleven-v3",
-      "eleven-v3-conversational",
-      "eleven-multilingual-v2",
-      "eleven-flash-v2.5",
-      "eleven-turbo-v2",
-    ]);
-    for (const id of SPEECH_MODEL_IDS) expect(SPEECH_MODELS[id].slug).toBe(`elevenlabs/${id}`);
-  });
-
-  it("selects a model by id or by OpenRouter slug, and canonicalizes the voice", () => {
-    expect(resolveSpeechSettings("eleven-flash-v2.5", "George")).toEqual({ model: "eleven-flash-v2.5", voice: "george" });
-    expect(resolveSpeechSettings("elevenlabs/eleven-multilingual-v2", undefined)).toEqual({ model: "eleven-multilingual-v2", voice: "sarah" });
+  it("offers Eleven v4 and no other speech model", () => {
+    expect(SPEECH_MODEL_IDS).toEqual(["eleven-v4"]);
+    expect(SPEECH_MODELS["eleven-v4"].slug).toBe("elevenlabs/eleven-v4");
+    expect(resolveSpeechSettings("elevenlabs/eleven-v4", "George")).toEqual({ model: "eleven-v4", voice: "george" });
+    expect(() => resolveSpeechSettings("eleven-flash-v2.5", undefined)).toThrow(/Unknown speech model/);
+    expect(() => resolveSpeechSettings("eleven-multilingual-v2", undefined)).toThrow(/Use one of: eleven-v4$/);
   });
 
   it("no longer offers Gemini TTS or its voices", () => {
