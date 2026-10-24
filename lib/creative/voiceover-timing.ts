@@ -2,7 +2,7 @@ import type { CreativeMarker } from "./schema";
 
 export interface VoiceoverTimingSpan { text: string; startMs: number; endMs: number }
 export interface VoiceoverTiming {
-  /** Explicitly an estimate: Gemini/OpenRouter speech audio has no native timestamp payload. */
+  /** Explicitly an estimate: OpenRouter speech audio has no native timestamp payload. */
   source: "duration-aligned-estimate";
   durationMs: number;
   words: VoiceoverTimingSpan[];

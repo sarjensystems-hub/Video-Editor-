@@ -11,7 +11,7 @@
  */
 import { requireOpenRouterKey } from "../openrouter-key";
 import { appUrl } from "@/lib/app-url";
-import { resolveAudioContainer, audioContentTypeFor, sniffAudioContainer, wrapPcmInWav } from "./audio-format";
+import { resolveAudioContainer, audioContentTypeFor } from "./audio-format";
 import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_SPEECH_MODEL_ID,
@@ -37,35 +37,7 @@ export interface GeneratedAudio {
   generationId: string | null;
 }
 
-/**
- * Gemini returns HTTP 200 and zero audio frames when it reads the entire
- * prompt as performance direction and finds nothing left to speak.
- *
- * Measured against the live model, holding the voice constant:
- *
- *   "Still."                                             -> 1160ms of audio
- *   "Dry, deadpan. Still."                               -> empty
- *   "[deadpan] White. Black. Still."                     -> empty
- *   `Say the following line ...: "White. Black. Still."` -> 3000ms of audio
- *   "[deadpan] White. Black. Still. This is how every    -> 13080ms of audio
- *    promotional film used to begin, and ..."
- *
- * So it is neither the length nor the amount of direction - the fourth case
- * carries more direction than the third and works. It is direction that is
- * not marked off from the script, next to a line too short to outweigh it.
- * Framing the words to be spoken fixes it at any length.
- *
- * This has to be said in the error rather than left to the caller, because the
- * provider's own message ("empty audio stream after returning HTTP 200")
- * reads as a transient fault: the first agent to hit it diagnosed a flake and
- * asked for a retry, which was already in the code and had already run.
- */
-const EMPTY_SPEECH_MESSAGE =
-  "Speech generation returned no audio. Gemini read the whole prompt as performance " +
-  "direction and found nothing to speak - it does this when direction is not marked " +
-  "off from the script and the line is short. Frame the words instead: " +
-  'Say the following line in a dry, deadpan tone: "White. Black. Still."' +
-  " Direction inline with a longer line is fine; a bare [tag] on a few words is not.";
+const EMPTY_SPEECH_MESSAGE = "Speech generation returned no audio.";
 
 function isEmptyAudioStream(detail: string): boolean {
   return /empty audio stream/i.test(detail);
@@ -79,7 +51,6 @@ export async function generateSpeechBytes(input: {
   speed?: number;
 }): Promise<GeneratedAudio> {
   const config: SpeechModelConfig = SPEECH_MODELS[input.model ?? DEFAULT_SPEECH_MODEL_ID];
-  const emptyMessage = config.pcm ? EMPTY_SPEECH_MESSAGE : "Speech generation returned no audio.";
   const request: RequestInit = {
     method: "POST",
     headers: { ...(await authHeaders()), "Content-Type": "application/json" },
@@ -87,7 +58,7 @@ export async function generateSpeechBytes(input: {
       model: config.slug,
       input: input.text,
       voice: input.voice,
-      response_format: config.responseFormat,
+      response_format: "mp3",
       ...(input.speed === undefined ? {} : { speed: input.speed }),
     }),
   };
@@ -99,27 +70,17 @@ export async function generateSpeechBytes(input: {
     // An empty audio stream is deterministic, not transient, so the retry is
     // spent for nothing and the caller waits twice as long to learn the same
     // thing. Measured: the same input returns it on every attempt.
-    if (isEmptyAudioStream(detail)) throw new Error(emptyMessage);
+    if (isEmptyAudioStream(detail)) throw new Error(EMPTY_SPEECH_MESSAGE);
     if (response.status < 500 || attempt === 1) {
       throw new Error(`Speech generation failed (${response.status}): ${detail.slice(0, 500)}`);
     }
   }
   if (!response?.ok) throw new Error("Speech generation failed without a response");
 
-  const raw = Buffer.from(await response.arrayBuffer());
+  const bytes = Buffer.from(await response.arrayBuffer());
   // Same condition, caught here instead when the provider returns 200 with a
   // zero-length body and OpenRouter passes it through rather than flagging it.
-  if (raw.byteLength <= 0) throw new Error(emptyMessage);
-
-  // Headerless PCM is the one thing the sniffer cannot recognise, so it would
-  // fall through to the "mp3" default and be stored as .mp3 over bytes that are
-  // not MP3. Wrap it in a WAV header instead - lossless, and pcm-s16 is already
-  // a supported codec downstream. Guarded by a sniff so that a provider which
-  // ignores the pcm request and returns a real container is passed through
-  // untouched rather than double-wrapped.
-  const bytes = config.pcm && sniffAudioContainer(raw) === null
-    ? wrapPcmInWav(raw, config.pcm)
-    : raw;
+  if (bytes.byteLength <= 0) throw new Error(EMPTY_SPEECH_MESSAGE);
 
   return {
     bytes,

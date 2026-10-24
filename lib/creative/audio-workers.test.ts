@@ -3,10 +3,10 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_SPEECH_MODEL,
   ELEVENLABS_VOICES,
-  GEMINI_TTS_VOICES,
+  SPEECH_MODEL_IDS,
+  SPEECH_MODELS,
   normalizeSpeechLanguage,
   resolveSpeechSettings,
-  resolveSpeechVoice,
 } from "./audio-workers";
 
 describe("speech worker configuration", () => {
@@ -16,25 +16,32 @@ describe("speech worker configuration", () => {
     expect(ELEVENLABS_VOICES).toHaveLength(21);
   });
 
-  it("keeps Gemini on request, and for callers that still name a Gemini voice", () => {
-    expect(resolveSpeechSettings("gemini", undefined)).toEqual({ model: "gemini", voice: "Kore" });
-    expect(resolveSpeechSettings(undefined, "kore")).toEqual({ model: "gemini", voice: "Kore" });
-    expect(resolveSpeechSettings("eleven-v4", "George")).toEqual({ model: "eleven-v4", voice: "george" });
+  it("wires every ElevenLabs speech model OpenRouter carries, and nothing else", () => {
+    expect(SPEECH_MODEL_IDS).toEqual([
+      "eleven-v4",
+      "eleven-v4-turbo",
+      "eleven-v3",
+      "eleven-v3-conversational",
+      "eleven-multilingual-v2",
+      "eleven-flash-v2.5",
+      "eleven-turbo-v2",
+    ]);
+    for (const id of SPEECH_MODEL_IDS) expect(SPEECH_MODELS[id].slug).toBe(`elevenlabs/${id}`);
   });
 
-  it("refuses a voice that belongs to the other model", () => {
-    expect(() => resolveSpeechSettings("eleven-v4", "Kore")).toThrow(/Available voices: sarah/);
-    expect(() => resolveSpeechSettings("gemini", "sarah")).toThrow(/Unknown voice sarah/);
-    expect(() => resolveSpeechSettings("kokoro", undefined)).toThrow(/Unknown speech model/);
+  it("selects a model by id or by OpenRouter slug, and canonicalizes the voice", () => {
+    expect(resolveSpeechSettings("eleven-flash-v2.5", "George")).toEqual({ model: "eleven-flash-v2.5", voice: "george" });
+    expect(resolveSpeechSettings("elevenlabs/eleven-multilingual-v2", undefined)).toEqual({ model: "eleven-multilingual-v2", voice: "sarah" });
+  });
+
+  it("no longer offers Gemini TTS or its voices", () => {
+    expect(() => resolveSpeechSettings("gemini", undefined)).toThrow(/Unknown speech model gemini/);
+    expect(() => resolveSpeechSettings("google/gemini-3.8-flash-tts", undefined)).toThrow(/Unknown speech model/);
+    expect(() => resolveSpeechSettings(undefined, "Kore")).toThrow(/Available voices: sarah/);
   });
 
   it("pins the clip-length music model rather than the full-song one", () => {
     expect(DEFAULT_MUSIC_MODEL).toBe("google/lyria-3-clip-preview");
-  });
-
-  it("publishes the complete Gemini voice catalogue", () => {
-    expect(GEMINI_TTS_VOICES).toHaveLength(30);
-    expect(GEMINI_TTS_VOICES).toEqual(expect.arrayContaining(["Kore", "Puck", "Aoede", "Sulafat"]));
   });
 
   it("keeps multilingual language labels and defaults to auto detection", () => {
@@ -42,15 +49,5 @@ describe("speech worker configuration", () => {
     expect(normalizeSpeechLanguage("GU")).toBe("gu");
     expect(normalizeSpeechLanguage("pt_BR")).toBe("pt-br");
     expect(normalizeSpeechLanguage(undefined)).toBe("auto");
-  });
-
-  it("defaults to Kore and canonicalizes explicit voice names", () => {
-    expect(resolveSpeechVoice(undefined)).toBe("Kore");
-    expect(resolveSpeechVoice("aoede")).toBe("Aoede");
-  });
-
-  it("rejects voices that Gemini does not expose", () => {
-    expect(() => resolveSpeechVoice("af_heart")).toThrow(/voice/i);
-    expect(() => resolveSpeechVoice("not_a_voice")).toThrow(/voice/i);
   });
 });
