@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_SPEECH_MODEL,
+  ELEVENLABS_LIBRARY_VOICE_NAMES,
+  ELEVENLABS_LIBRARY_VOICES,
   ELEVENLABS_VOICES,
   SPEECH_MODEL_IDS,
   SPEECH_MODELS,
@@ -12,16 +14,29 @@ import {
 describe("speech worker configuration", () => {
   it("routes speech through ElevenLabs Eleven v4 by default", () => {
     expect(DEFAULT_SPEECH_MODEL).toBe("elevenlabs/eleven-v4");
-    expect(resolveSpeechSettings(undefined, undefined)).toEqual({ model: "eleven-v4", voice: "sarah" });
+    expect(resolveSpeechSettings(undefined, undefined)).toEqual({ model: "eleven-v4", voice: "sarah", voiceName: "sarah" });
     expect(ELEVENLABS_VOICES).toHaveLength(21);
   });
 
   it("offers Eleven v4 and no other speech model", () => {
     expect(SPEECH_MODEL_IDS).toEqual(["eleven-v4"]);
     expect(SPEECH_MODELS["eleven-v4"].slug).toBe("elevenlabs/eleven-v4");
-    expect(resolveSpeechSettings("elevenlabs/eleven-v4", "George")).toEqual({ model: "eleven-v4", voice: "george" });
+    expect(resolveSpeechSettings("elevenlabs/eleven-v4", "George")).toEqual({ model: "eleven-v4", voice: "george", voiceName: "george" });
     expect(() => resolveSpeechSettings("eleven-flash-v2.5", undefined)).toThrow(/Unknown speech model/);
     expect(() => resolveSpeechSettings("eleven-multilingual-v2", undefined)).toThrow(/Use one of: eleven-v4$/);
+  });
+
+  it("sends Indian English library voices by ID and keeps their names", () => {
+    expect(resolveSpeechSettings(undefined, "ranbir")).toEqual({ model: "eleven-v4", voice: "2iAXJEMO2o0PqUHzvZwQ", voiceName: "Ranbir" });
+    expect(resolveSpeechSettings(undefined, "Simran")).toEqual({ model: "eleven-v4", voice: "1ea3IFhmSWgw8sJkSvfJ", voiceName: "Simran" });
+    expect(resolveSpeechSettings(undefined, "2iAXJEMO2o0PqUHzvZwQ")).toEqual({ model: "eleven-v4", voice: "2iAXJEMO2o0PqUHzvZwQ", voiceName: "Ranbir" });
+    expect(ELEVENLABS_LIBRARY_VOICE_NAMES).toHaveLength(9);
+    for (const name of ELEVENLABS_LIBRARY_VOICE_NAMES) expect(ELEVENLABS_LIBRARY_VOICES[name].id).toMatch(/^[A-Za-z0-9]{20}$/);
+  });
+
+  it("passes any other ElevenLabs voice ID through untouched", () => {
+    expect(resolveSpeechSettings(undefined, "amiAXapsDOAiHJqbsAZj")).toEqual({ model: "eleven-v4", voice: "amiAXapsDOAiHJqbsAZj", voiceName: "amiAXapsDOAiHJqbsAZj" });
+    expect(() => resolveSpeechSettings(undefined, "amiAXaps")).toThrow(/Indian English: Ranbir/);
   });
 
   it("no longer offers Gemini TTS or its voices", () => {

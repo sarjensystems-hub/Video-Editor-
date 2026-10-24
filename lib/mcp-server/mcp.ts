@@ -3,7 +3,7 @@ import { CREATIVE_CANVAS_MAX_DIMENSION, CREATIVE_ELEMENT_TYPES } from "../creati
 import { renderCreativeCapabilityGuide } from "../creative/capability-map";
 import { documentSha256 } from "../creative/document-hash";
 import { creativeRenderCost, videoGenerationCost } from "../credit-costs";
-import { DEFAULT_SPEECH_MODEL_ID, ELEVEN_V4_INDIAN_LANGUAGES, ELEVENLABS_VOICES, SPEECH_MODEL_IDS } from "../creative/audio-workers";
+import { DEFAULT_SPEECH_MODEL_ID, ELEVEN_V4_INDIAN_LANGUAGES, ELEVENLABS_LIBRARY_VOICE_NAMES, ELEVENLABS_LIBRARY_VOICES, ELEVENLABS_VOICES, SPEECH_MODEL_IDS } from "../creative/audio-workers";
 import { CREATIVE_ASSET_CLASSES, CREATIVE_ASSET_CLASS_IDS, assetClassesForKind } from "../creative/asset-class";
 import { MAX_TRANSACTION_OPERATIONS } from "../creative/schema-guide";
 import { inlineImagesOf } from "./inline-images";
@@ -449,7 +449,7 @@ const CREATIVE_MCP_TOOLS = [
   },
   {
     name: "studio_generate_speech_asset",
-    description: `Generate a voiceover with ElevenLabs Eleven v4 and register it as an audio asset. It detects the language from the script - 90+ languages including ${ELEVEN_V4_INDIAN_LANGUAGES.join(", ")} - so write a Hindi, Tamil or Gujarati script in that language and script and any voice speaks it; there are no separate Indian voices. Write only the words to be spoken - any prose direction is read aloud. Steer delivery with short inline audio tags in square brackets placed before the words they colour, such as [excited], [warmly], [calm], [whispers], [sighs], [laughs], [short pause] or [pause]; punctuation and ellipses shape pacing too. It speaks exactly the script, which keeps captions aligned. Returns the asset; the document is not mutated - place it on the timeline with an add_audio_clip edit transaction.`,
+    description: `Generate a voiceover with ElevenLabs Eleven v4 and register it as an audio asset. It detects the language from the script - 90+ languages including ${ELEVEN_V4_INDIAN_LANGUAGES.join(", ")} - so write a Hindi, Tamil or Gujarati script in that language and script and any voice speaks it. For an Indian English accent, use one of the Indian English voices named in voice (Ranbir is the tested pick for calm narration). Write only the words to be spoken - any prose direction is read aloud. Steer delivery with short inline audio tags in square brackets placed before the words they colour, such as [excited], [warmly], [calm], [whispers], [sighs], [laughs], [short pause] or [pause]; punctuation and ellipses shape pacing too. It speaks exactly the script, which keeps captions aligned. Returns the asset; the document is not mutated - place it on the timeline with an add_audio_clip edit transaction.`,
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -461,7 +461,10 @@ const CREATIVE_MCP_TOOLS = [
         model: { type: "string", enum: [...SPEECH_MODEL_IDS], default: DEFAULT_SPEECH_MODEL_ID, description: "Speech model. Eleven v4 is the only one; about 5 cents for a 76-second voiceover." },
         voice: {
           type: "string",
-          description: `Preset voice (default sarah): ${ELEVENLABS_VOICES.join(", ")}. Each speaks every language Eleven v4 supports.`,
+          description: `Voice, by name (case-insensitive). Presets (default sarah): ${ELEVENLABS_VOICES.join(", ")}. Indian English voices: ${ELEVENLABS_LIBRARY_VOICE_NAMES.map((name) => {
+            const entry: { gender: string; note?: string } = ELEVENLABS_LIBRARY_VOICES[name];
+            return `${name} (${entry.gender}${entry.note ? `, ${entry.note}` : ""})`;
+          }).join(", ")}. Any other ElevenLabs Voice Library voice can be used by its 20-character voice ID. Each speaks every language Eleven v4 supports; the Indian English voices are tested on English scripts only.`,
         },
         label: { type: "string" },
         marker_granularity: { type: "string", enum: ["words", "sentences", "both"], default: "both", description: "Return duration-aligned estimated marker objects to wrap in add_marker operations." },

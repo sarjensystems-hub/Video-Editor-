@@ -122,6 +122,8 @@ describe("Studio media MCP", () => {
     expect(speech.inputSchema.properties.language.enum).toBeUndefined();
     expect(speech.inputSchema.properties.voice.enum).toBeUndefined();
     expect(speech.inputSchema.properties.voice.description).toMatch(/sarah/);
+    expect(speech.inputSchema.properties.voice.description).toMatch(/Ranbir \(male, neutral and clean/);
+    expect(speech.inputSchema.properties.voice.description).toMatch(/Simran \(female\)/);
   });
 
   it("no longer advertises the second-LLM creative director or decomposition tools", async () => {

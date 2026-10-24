@@ -126,7 +126,7 @@ export async function generateCreativeSpeechAsset(
 
   const { normalizeSpeechLanguage, resolveSpeechSettings, SPEECH_MODELS } = await import("./audio-workers");
   const language = normalizeSpeechLanguage(input.language);
-  const { model, voice } = resolveSpeechSettings(input.model, input.voice);
+  const { model, voice, voiceName } = resolveSpeechSettings(input.model, input.voice);
   const modelSlug = SPEECH_MODELS[model].slug;
 
   const { generateSpeechBytes } = await import("./audio-generate");
@@ -155,7 +155,8 @@ export async function generateCreativeSpeechAsset(
       worker: "speech",
       model: modelSlug,
       language,
-      voice,
+      voice: voiceName,
+      ...(voiceName === voice ? {} : { voice_id: voice }),
       text,
       ...(input.transcript?.trim() ? { transcript: input.transcript.trim() } : {}),
       generation_id: generated.generationId,
