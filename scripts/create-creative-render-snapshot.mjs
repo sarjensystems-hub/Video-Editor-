@@ -112,6 +112,13 @@ async function writeDeploymentMetadata(metadata) {
   }
 }
 
+/** Vercel's answer when the plan's sandbox allowance is used up (402) or rate-limited (429). */
+function isSandboxQuotaRefusal(error) {
+  const status = error?.response?.status ?? error?.status;
+  const code = error?.json?.error?.code;
+  return status === 402 || status === 429 || code === "payment_required" || /usage limit/i.test(String(error?.message ?? ""));
+}
+
 const fingerprint = await fingerprintCreativeRendererSource(process.cwd());
 console.log(
   `[creative-render] renderer source fingerprint ${fingerprint.slice(0, 12)} (${CREATIVE_RENDERER_FINGERPRINT_KIND})`,
@@ -156,11 +163,25 @@ try {
   );
 
   console.log("[creative-render] no compatible reusable snapshot; creating Vercel Sandbox");
-  const sandbox = await createSandbox({
-    onProgress: ({ progress, message }) => {
-      console.log(`[creative-render] ${message} ${Math.round(progress * 100)}%`);
-    },
-  });
+  let sandbox;
+  try {
+    sandbox = await createSandbox({
+      onProgress: ({ progress, message }) => {
+        console.log(`[creative-render] ${message} ${Math.round(progress * 100)}%`);
+      },
+    });
+  } catch (error) {
+    // A spent sandbox allowance must not take the whole app offline: without
+    // a snapshot only sandbox rendering is unavailable, and that is already
+    // true while the allowance is spent. Anything else is still fatal.
+    if (!isSandboxQuotaRefusal(error)) throw error;
+    console.warn(
+      `[creative-render] Vercel refused a sandbox (${error?.message ?? error}). Deploying without a renderer snapshot; ` +
+        "sandbox renders will fail until the allowance resets. Set CREATIVE_RENDER_WORKER_URL and " +
+        "CREATIVE_RENDER_WORKER_SECRET to render on the self-hosted worker instead.",
+    );
+    process.exit(0);
+  }
 
   // @remotion/vercel creates nested bundle directories with non-recursive mkdir.
   // Newer Vercel Sandbox SDKs require the bundle root to exist first.
