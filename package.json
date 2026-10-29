@@ -8,10 +8,13 @@
     "build": "next build",
     "postbuild": "node scripts/create-creative-render-snapshot.mjs",
     "start": "next start",
-    "test": "vitest run"
+    "test": "vitest run",
+    "render-worker": "tsx render-worker/server.ts"
   },
   "dependencies": {
+    "@remotion/bundler": "4.0.517",
     "@remotion/media-parser": "4.0.517",
+    "@remotion/renderer": "4.0.517",
     "@remotion/vercel": "4.0.517",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
@@ -33,6 +36,7 @@
     "autoprefixer": "^10.0.1",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
+    "tsx": "4.23.15",
     "typescript": "^5",
     "vitest": "^4.1.6"
   }

@@ -125,9 +125,11 @@ Renders happen on Vercel and the finished MP4 lands in Supabase Storage,
 which means the AI can hand back a finished file rather than a to-do. A
 minute of vertical 1080p takes a few minutes of render time.
 
-If the render bill ever becomes the problem, rendering can be moved into the
-browser instead — free, but then the AI can only say "ready to export" and a
-person has to click the button. That trade is not made here.
+Renders can also run on a machine you control instead of a Vercel Sandbox:
+a VPS, a Fly/Railway box, or your own computer behind a tunnel. Set
+`CREATIVE_RENDER_WORKER_URL` and `CREATIVE_RENDER_WORKER_SECRET` and run the
+worker described in [render-worker/README.md](render-worker/README.md). The
+output is identical; only the machine changes.
 
 ## One licence to check
 

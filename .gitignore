@@ -39,3 +39,6 @@ next-env.d.ts
 
 # Personal Claude Code permissions, never shared
 .claude/settings.local.json
+
+# self-hosted render worker bundle
+/.remotion-worker-bundle/

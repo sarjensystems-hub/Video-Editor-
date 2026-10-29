@@ -18,6 +18,14 @@ if (!isVercel) {
   process.exit(0);
 }
 
+// Rendering on the self-hosted worker (lib/creative/render-worker.ts) needs no
+// sandbox, and creating one would fail the whole deploy once the account's
+// sandbox allowance is spent.
+if (process.env.CREATIVE_RENDER_WORKER_URL?.trim() && process.env.CREATIVE_RENDER_WORKER_SECRET?.trim()) {
+  console.log("[creative-render] render worker configured: skipping Vercel Sandbox snapshot");
+  process.exit(0);
+}
+
 const deploymentId = process.env.VERCEL_DEPLOYMENT_ID;
 if (!deploymentId) throw new Error("VERCEL_DEPLOYMENT_ID is required for creative render snapshots");
 

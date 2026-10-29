@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+.vercel
+.env
+.env*.local
+.remotion-worker-bundle
+.claude

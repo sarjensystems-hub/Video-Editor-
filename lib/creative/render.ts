@@ -1,8 +1,7 @@
 import { Sandbox } from "@vercel/sandbox";
 import { renderMediaOnVercel, renderStillOnVercel } from "@remotion/vercel";
 import { uploadAnyBytes } from "../storage";
-import { getObjectText, headObject, presignPut } from "../b2";
-import { planContactSheetLayout, type ContactSheetLayout } from "./contact-sheet";
+import { getObjectText, presignPut } from "../b2";
 import { resolveCreativeFrameAtTime } from "./frame-time";
 import { resolveCreativeRenderOptions, type CreativeRenderWindowOptions } from "./render-options";
 import {
@@ -13,7 +12,18 @@ import { withFileBackedRemotionConfig } from "./remotion-sandbox-transport";
 import { localizeSandboxMedia, type PreviewCopyStore } from "./sandbox-media";
 import { sandboxDownloadUrl } from "./preview-copies";
 import type { CreativeDocument } from "./schema";
-import { validateCreativeDocument } from "./validate";
+import {
+  assertValidDocument,
+  buildContactSheet,
+  encodePreviewWebp,
+  estimateRenderCompletionMs,
+  storedRenderOutput,
+  toBuffer,
+  type CreativeRendererName,
+} from "./render-shared";
+import { RemoteWorkerCreativeRenderAdapter, isRenderWorkerHandle, renderWorkerConfigured, stopRenderWorkerJob } from "./render-worker";
+
+export { PREVIEW_MAX_EDGE, PREVIEW_WEBP_QUALITY, encodePreviewWebp, estimateRenderCompletionMs } from "./render-shared";
 
 export interface CreativeRenderRequest {
   document: CreativeDocument;
@@ -42,7 +52,7 @@ export interface CreativeRenderResult {
   url: string;
   contentType: string;
   sizeBytes: number;
-  renderer: "remotion-vercel";
+  renderer: CreativeRendererName;
 }
 
 export interface CreativeDetachedRenderHandle {
@@ -55,15 +65,9 @@ export interface CreativeDetachedRenderHandle {
 
 export type CreativeDetachedRenderStatus =
   | { status: "rendering"; progress: number; phase: string; estimatedCompletionMs: number | null }
-  | { status: "completed"; progress: 1; url: string; contentType: string; sizeBytes: number; renderer: "remotion-vercel" }
+  | { status: "completed"; progress: 1; url: string; contentType: string; sizeBytes: number; renderer: CreativeRendererName }
   | { status: "failed"; progress: number; error: string };
 
-export function estimateRenderCompletionMs(startedAtMs: number, progress: number, nowMs = Date.now()): number | null {
-  if (!Number.isFinite(progress) || progress <= 0) return null;
-  if (progress >= 1) return nowMs;
-  const elapsed = Math.max(0, nowMs - startedAtMs);
-  return Math.round(startedAtMs + elapsed / progress);
-}
 
 export interface CreativeFrameRenderRequest {
   document: CreativeDocument;
@@ -90,7 +94,7 @@ export interface CreativeFrameRenderResult {
    * pixels (frame comparison, reference analysis). Never sent anywhere.
    */
   png: Uint8Array;
-  renderer: "remotion-vercel";
+  renderer: CreativeRendererName;
   frame: number;
   timeMs: number;
 }
@@ -253,72 +257,6 @@ async function restoreCreativeRendererSandbox(timeout = RENDER_SANDBOX_TIMEOUT_M
   }
 }
 
-function assertValidDocument(document: CreativeDocument) {
-  const validation = validateCreativeDocument(document);
-  if (!validation.valid) {
-    throw new Error(validation.issues[0]?.message ?? "Invalid CreativeDocument");
-  }
-}
-
-function toBuffer(bytes: Uint8Array | ArrayBuffer): Uint8Array {
-  return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-}
-
-/**
- * Longest edge a preview is sent at. Claude scales any image larger than this
- * down before reading it, so sending more pixels only costs bytes and upload
- * time, never detail the model can see.
- */
-export const PREVIEW_MAX_EDGE = 1568;
-export const PREVIEW_WEBP_QUALITY = 80;
-
-/** One import of sharp shared by every frame in a batch, however many run at once. */
-type Sharp = typeof import("sharp");
-let sharpLoader: Promise<Sharp> | null = null;
-function loadSharp(): Promise<Sharp> {
-  sharpLoader ??= import("sharp").then((module) => module.default);
-  return sharpLoader;
-}
-
-/** Re-encodes a lossless PNG as a small WebP for an assistant to look at. */
-export async function encodePreviewWebp(png: Uint8Array): Promise<Uint8Array> {
-  const sharp = await loadSharp();
-  const webp = await sharp(Buffer.from(png))
-    .resize(PREVIEW_MAX_EDGE, PREVIEW_MAX_EDGE, { fit: "inside", withoutEnlargement: true })
-    .webp({ quality: PREVIEW_WEBP_QUALITY })
-    .toBuffer();
-  return new Uint8Array(webp);
-}
-
-async function compositeContactSheet(
-  frames: Uint8Array[],
-  layout: ContactSheetLayout,
-): Promise<Uint8Array> {
-  const sharp = await loadSharp();
-  const tiles = await Promise.all(
-    layout.tiles.map(async (tile, index) => ({
-      input: await sharp(Buffer.from(frames[index]))
-        .resize(tile.width, tile.height, { fit: "fill" })
-        .png()
-        .toBuffer(),
-      left: tile.x,
-      top: tile.y,
-    })),
-  );
-  const sheet = await sharp({
-    create: {
-      width: layout.sheetWidth,
-      height: layout.sheetHeight,
-      channels: 4,
-      background: { r: 9, g: 9, b: 11, alpha: 1 },
-    },
-  })
-    .composite(tiles)
-    .png()
-    .toBuffer();
-  return new Uint8Array(sheet);
-}
-
 /**
  * How long a render may go without its progress file changing before the
  * watchdog gives up on it. Rendering rewrites the file many times a second,
@@ -396,25 +334,14 @@ async function runningSandbox(name: string): Promise<Sandbox | null> {
   return status === "running" || status === "pending" ? sandbox : null;
 }
 
-/** Stops a sandbox by name, without waking it if it has already stopped. */
+/**
+ * Stops a sandbox by name, without waking it if it has already stopped. A
+ * name the self-hosted worker handed out cancels that worker's render instead.
+ */
 export async function stopSandboxByName(name: string): Promise<void> {
+  if (isRenderWorkerHandle(name)) return stopRenderWorkerJob(name);
   const sandbox = await runningSandbox(name);
   if (sandbox) await Promise.resolve(sandbox.stop()).catch(() => undefined);
-}
-
-/** The render's output as stored, when the sandbox stored it itself. */
-async function storedOutput(outputKey: string): Promise<CreativeDetachedRenderStatus | null> {
-  const head = await headObject(outputKey).catch(() => null);
-  if (!head || head.size <= 0) return null;
-  const { mediaUrl } = await import("../storage");
-  return {
-    status: "completed",
-    progress: 1,
-    url: await mediaUrl(outputKey),
-    contentType: head.contentType || "video/mp4",
-    sizeBytes: head.size,
-    renderer: "remotion-vercel",
-  };
 }
 
 export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapter {
@@ -503,7 +430,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
     const sandbox = await runningSandbox(handle.sandboxId);
     if (!sandbox) {
       // The sandbox is gone, but the render may have stored its output first.
-      const stored = await storedOutput(handle.outputKey);
+      const stored = await storedRenderOutput(handle.outputKey, "remotion-vercel");
       if (stored) return stored;
       return { status: "failed", progress: 0, error: "Render sandbox expired before producing output." };
     }
@@ -511,7 +438,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
     try {
       command = await sandbox.getCommand(handle.cmdId);
     } catch (error) {
-      const stored = await storedOutput(handle.outputKey);
+      const stored = await storedRenderOutput(handle.outputKey, "remotion-vercel");
       await Promise.resolve(sandbox.stop()).catch(() => undefined);
       if (stored) return stored;
       return { status: "failed", progress: 0, error: error instanceof Error ? error.message : "Render command is unavailable." };
@@ -559,7 +486,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
     // Usually the sandbox has already stored the MP4 itself.
     const uploaded = await sandbox.fs.readFile(UPLOAD_MARKER, "utf8").catch(() => null);
     if (uploaded && String(uploaded).trim() === "uploaded") {
-      const stored = await storedOutput(handle.outputKey);
+      const stored = await storedRenderOutput(handle.outputKey, "remotion-vercel");
       if (stored) return stored;
     }
     const bytes = await sandbox.fs.readFile(handle.outputFile);
@@ -715,27 +642,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
       const frames = rendered;
       if (!request.contactSheet) return { frames };
 
-      const layout = planContactSheetLayout({
-        frameCount: frames.length,
-        frameWidth: request.document.canvas.width,
-        frameHeight: request.document.canvas.height,
-      });
-      const sheet = await encodePreviewWebp(
-        await compositeContactSheet(frames.map((entry) => entry.png), layout),
-      );
-
-      return {
-        frames,
-        contactSheet: {
-          bytes: sheet,
-          contentType: "image/webp",
-          sizeBytes: sheet.byteLength,
-          columns: layout.columns,
-          rows: layout.rows,
-          width: layout.sheetWidth,
-          height: layout.sheetHeight,
-        },
-      };
+      return { frames, contactSheet: await buildContactSheet(request.document, frames) };
     } finally {
       try {
         await sandbox.stop();
@@ -746,4 +653,50 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
   }
 }
 
-export const creativeRenderAdapter: CreativeRenderAdapter = new RemotionVercelCreativeRenderAdapter();
+/**
+ * Picks the renderer per call. New work goes to the self-hosted worker when
+ * CREATIVE_RENDER_WORKER_URL is set and to the Vercel Sandbox otherwise; a
+ * render already running is always polled and stopped by the backend that
+ * started it, so switching the variable never strands one mid-flight.
+ */
+export class RoutingCreativeRenderAdapter implements CreativeRenderAdapter {
+  constructor(
+    private readonly vercel: CreativeRenderAdapter = new RemotionVercelCreativeRenderAdapter(),
+    private readonly worker: CreativeRenderAdapter = new RemoteWorkerCreativeRenderAdapter(),
+    private readonly useWorker: () => boolean = renderWorkerConfigured,
+  ) {}
+
+  private current(): CreativeRenderAdapter {
+    return this.useWorker() ? this.worker : this.vercel;
+  }
+
+  private owner(handle: CreativeDetachedRenderHandle): CreativeRenderAdapter {
+    return isRenderWorkerHandle(handle.sandboxId) ? this.worker : this.vercel;
+  }
+
+  render(request: CreativeRenderRequest) {
+    return this.current().render(request);
+  }
+
+  renderFrame(request: CreativeFrameRenderRequest) {
+    return this.current().renderFrame(request);
+  }
+
+  renderFrames(request: CreativeFramesRenderRequest) {
+    return this.current().renderFrames(request);
+  }
+
+  startDetached(request: CreativeRenderRequest) {
+    return this.current().startDetached(request);
+  }
+
+  pollDetached(handle: CreativeDetachedRenderHandle) {
+    return this.owner(handle).pollDetached(handle);
+  }
+
+  stopDetached(handle: CreativeDetachedRenderHandle) {
+    return this.owner(handle).stopDetached(handle);
+  }
+}
+
+export const creativeRenderAdapter: CreativeRenderAdapter = new RoutingCreativeRenderAdapter();

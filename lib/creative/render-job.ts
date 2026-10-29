@@ -9,6 +9,8 @@
  * reports and what the browser stops polling for.
  */
 
+import { RENDER_WORKER_HANDLE_PREFIX } from "./render-worker-protocol";
+
 export type RenderJobStatus = "queued" | "rendering" | "completed" | "failed";
 
 export interface RenderJobHeartbeat {
@@ -100,11 +102,22 @@ export async function updateClaimedRenderJob(
  */
 export const DETACHED_RENDER_LIFETIME_MS = 50 * 60 * 1000;
 
+/**
+ * A self-hosted worker has no 45-minute ceiling and may queue a render behind
+ * another, so its renders are given up on far later. Its signed upload URL
+ * lasts twelve hours; past this, nothing it produced could be stored anyway.
+ */
+export const WORKER_RENDER_LIFETIME_MS = 6 * 60 * 60 * 1000;
+
 export function isRenderJobStale(job: RenderJobHeartbeat, nowMs: number): boolean {
   if (!isRenderJobRunning(job.status)) return false;
-  const detached = job.metadata?.detached_render as { startedAtMs?: unknown } | undefined;
+  const detached = job.metadata?.detached_render as { startedAtMs?: unknown; sandboxId?: unknown } | undefined;
   if (detached && typeof detached.startedAtMs === "number") {
-    return nowMs - detached.startedAtMs > DETACHED_RENDER_LIFETIME_MS;
+    const lifetime =
+      typeof detached.sandboxId === "string" && detached.sandboxId.startsWith(RENDER_WORKER_HANDLE_PREFIX)
+        ? WORKER_RENDER_LIFETIME_MS
+        : DETACHED_RENDER_LIFETIME_MS;
+    return nowMs - detached.startedAtMs > lifetime;
   }
   const beat = job.updated_at ?? job.started_at;
   if (!beat) return false;

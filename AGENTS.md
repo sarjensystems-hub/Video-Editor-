@@ -89,6 +89,19 @@
   any file a project timeline still places. Any new delete button must remove
   the stored file as well, never just the row.
 
+## Rendering
+
+- Every render, preview frame and contact sheet goes through
+  `creativeRenderAdapter` in `lib/creative/render.ts`. It sends new work to
+  the self-hosted worker (`render-worker/`, `lib/creative/render-worker.ts`)
+  when `CREATIVE_RENDER_WORKER_URL` and `CREATIVE_RENDER_WORKER_SECRET` are
+  set, and to a Vercel Sandbox otherwise. A running render is always polled
+  and stopped by the backend that started it (worker handles start `worker:`).
+- The worker holds no credentials. Give it signed URLs, as the sandbox got;
+  never put storage or database keys on it.
+- The HTTP contract is `lib/creative/render-worker-protocol.ts`, shared by
+  both sides; change it there.
+
 ## No workspaces
 
 - There are no workspaces. Projects, assets, folders, renders and videos

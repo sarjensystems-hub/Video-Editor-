@@ -92,13 +92,15 @@ export function planSandboxMedia(assets: CreativeRemotionAssetMap, options: Sand
 /** The asset map with every successfully copied asset pointed at its local file. */
 export function localizeAssetMap(
   assets: CreativeRemotionAssetMap,
-  jobs: SandboxMediaJob[],
+  jobs: Array<Pick<SandboxMediaJob, "file" | "assetIds">>,
   copied: Set<string>,
+  /** Folder under the bundle's public/ the files were written to. */
+  dir = "_media",
 ): CreativeRemotionAssetMap {
   const local = new Map<string, string>();
   for (const job of jobs) {
     if (!copied.has(job.file)) continue;
-    for (const assetId of job.assetIds) local.set(assetId, `${SANDBOX_LOCAL_ASSET_PREFIX}_media/${job.file}`);
+    for (const assetId of job.assetIds) local.set(assetId, `${SANDBOX_LOCAL_ASSET_PREFIX}${dir}/${job.file}`);
   }
   return Object.fromEntries(
     Object.entries(assets).map(([id, asset]) => [id, local.has(id) ? { ...asset, url: local.get(id)! } : asset]),
