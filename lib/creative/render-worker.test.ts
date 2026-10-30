@@ -3,13 +3,15 @@ import { createCanonicalCreativeFixture } from "./fixtures";
 import { WORKER_RENDER_LIFETIME_MS, DETACHED_RENDER_LIFETIME_MS, isRenderJobStale } from "./render-job";
 
 const headObject = vi.fn();
+const getObjectText = vi.fn();
 const presignPut = vi.fn(async (path: string) => `https://storage.example.com/put/${path}`);
 const presignGet = vi.fn(async (path: string) => `https://storage.example.com/get/${path}`);
 vi.mock("../b2", () => ({
   headObject: (...args: unknown[]) => headObject(...args),
   presignPut: (path: string) => presignPut(path),
   presignGet: (path: string) => presignGet(path),
-  getObjectText: vi.fn(),
+  getObjectText: (...args: unknown[]) => getObjectText(...args),
+  putObject: vi.fn(),
 }));
 vi.mock("../storage", () => ({
   mediaUrl: async (key: string) => `https://app.example.com/media/${key}`,
@@ -43,10 +45,14 @@ async function importWorker() {
 }
 
 describe("self-hosted render worker adapter", () => {
+  const handle = { sandboxId: "worker:job-1", cmdId: "render-worker", outputFile: "", outputKey: "u1/renders/r1.mp4", startedAtMs: Date.now() - 10_000 };
+
   beforeEach(() => {
     vi.resetModules();
     fetchMock.mockReset();
     headObject.mockReset();
+    getObjectText.mockReset();
+    getObjectText.mockResolvedValue(null);
     vi.stubGlobal("fetch", fetchMock);
     process.env.CREATIVE_RENDER_WORKER_URL = "https://render.example.com/";
     process.env.CREATIVE_RENDER_WORKER_SECRET = "worker-secret";
@@ -58,11 +64,27 @@ describe("self-hosted render worker adapter", () => {
     delete process.env.CREATIVE_RENDER_WORKER_SECRET;
   });
 
-  it("is only switched on when both the URL and the secret are set", async () => {
+  it("is switched on by the secret alone", async () => {
     const { renderWorkerConfigured } = await importWorker();
+    delete process.env.CREATIVE_RENDER_WORKER_URL;
     expect(renderWorkerConfigured()).toBe(true);
     delete process.env.CREATIVE_RENDER_WORKER_SECRET;
     expect(renderWorkerConfigured()).toBe(false);
+  });
+
+  it("calls the address the worker registered, ahead of the environment fallback", async () => {
+    getObjectText.mockResolvedValue(JSON.stringify({ url: "https://fresh-tunnel.trycloudflare.com" }));
+    fetchMock.mockResolvedValueOnce(json(200, { id: "job-1", status: "queued", progress: 0, stage: "queued" }));
+    const { RemoteWorkerCreativeRenderAdapter } = await importWorker();
+    await new RemoteWorkerCreativeRenderAdapter().pollDetached(handle);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://fresh-tunnel.trycloudflare.com/renders/job-1");
+  });
+
+  it("explains a worker that has never registered", async () => {
+    delete process.env.CREATIVE_RENDER_WORKER_URL;
+    const { RemoteWorkerCreativeRenderAdapter } = await importWorker();
+    await expect(new RemoteWorkerCreativeRenderAdapter().pollDetached(handle)).rejects.toThrow(/has not registered/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("starts a render with signed URLs and returns a worker-prefixed handle", async () => {
@@ -109,8 +131,6 @@ describe("self-hosted render worker adapter", () => {
     expect(fetchMock.mock.calls[1][0]).toBe("https://render.example.com/renders/job-2");
     expect(fetchMock.mock.calls[1][1].method).toBe("DELETE");
   });
-
-  const handle = { sandboxId: "worker:job-1", cmdId: "render-worker", outputFile: "", outputKey: "u1/renders/r1.mp4", startedAtMs: Date.now() - 10_000 };
 
   it("maps worker progress onto the detached-render status", async () => {
     const { RemoteWorkerCreativeRenderAdapter } = await importWorker();

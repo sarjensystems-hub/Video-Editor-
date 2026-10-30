@@ -21,7 +21,7 @@ if (!isVercel) {
 // Rendering on the self-hosted worker (lib/creative/render-worker.ts) needs no
 // sandbox, and creating one would fail the whole deploy once the account's
 // sandbox allowance is spent.
-if (process.env.CREATIVE_RENDER_WORKER_URL?.trim() && process.env.CREATIVE_RENDER_WORKER_SECRET?.trim()) {
+if (process.env.CREATIVE_RENDER_WORKER_SECRET?.trim()) {
   console.log("[creative-render] render worker configured: skipping Vercel Sandbox snapshot");
   process.exit(0);
 }
@@ -177,8 +177,8 @@ try {
     if (!isSandboxQuotaRefusal(error)) throw error;
     console.warn(
       `[creative-render] Vercel refused a sandbox (${error?.message ?? error}). Deploying without a renderer snapshot; ` +
-        "sandbox renders will fail until the allowance resets. Set CREATIVE_RENDER_WORKER_URL and " +
-        "CREATIVE_RENDER_WORKER_SECRET to render on the self-hosted worker instead.",
+        "sandbox renders will fail until the allowance resets. Set CREATIVE_RENDER_WORKER_SECRET " +
+        "to render on the self-hosted worker instead.",
     );
     process.exit(0);
   }

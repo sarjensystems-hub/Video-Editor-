@@ -94,8 +94,10 @@
 - Every render, preview frame and contact sheet goes through
   `creativeRenderAdapter` in `lib/creative/render.ts`. It sends new work to
   the self-hosted worker (`render-worker/`, `lib/creative/render-worker.ts`)
-  when `CREATIVE_RENDER_WORKER_URL` and `CREATIVE_RENDER_WORKER_SECRET` are
-  set, and to a Vercel Sandbox otherwise. A running render is always polled
+  when `CREATIVE_RENDER_WORKER_SECRET` is set, and to a Vercel Sandbox
+  otherwise. The worker registers its own public address with the app
+  (`/api/render-worker/register`, stored by `lib/creative/render-worker-registry.ts`),
+  so a changed tunnel address needs no environment change or redeploy. A running render is always polled
   and stopped by the backend that started it (worker handles start `worker:`).
 - The worker holds no credentials. Give it signed URLs, as the sandbox got;
   never put storage or database keys on it.

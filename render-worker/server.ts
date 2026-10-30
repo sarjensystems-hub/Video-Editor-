@@ -22,12 +22,22 @@
  *                               Remotion's Chrome Headless Shell
  *   FFMPEG_PATH                 ffmpeg for preview copies; Remotion's own by default
  *
- * Run it with `npm run render-worker`.
+ * Reaching it from the app:
+ *   RENDER_WORKER_APP_URL       the app, e.g. https://video-editor-sarjen1.vercel.app; the
+ *                               worker registers its public address there on start
+ *   RENDER_WORKER_TUNNEL        "cloudflare" to run a free Cloudflare quick tunnel itself
+ *                               (cloudflared must be installed); its address changes on
+ *                               every restart and is re-registered automatically
+ *   RENDER_WORKER_PUBLIC_URL    a fixed public https address instead (VPS, named tunnel)
+ *   CLOUDFLARED_PATH            cloudflared executable, default "cloudflared"
+ *
+ * Settings are also read from .env.worker.local in the repository root, so
+ * nothing has to be typed into the shell. Run it with `npm run render-worker`.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
@@ -59,6 +69,11 @@ import type {
 import { PREVIEW_COPY_MAX_EDGE, localizeAssetMap } from "../lib/creative/sandbox-media";
 
 const ROOT = path.resolve(__dirname, "..");
+
+// Before any setting is read. Values already in the environment win.
+const ENV_FILE = path.join(ROOT, ".env.worker.local");
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
+
 const SECRET = process.env.RENDER_WORKER_SECRET?.trim() ?? "";
 const PORT = positiveInt("PORT", 8787);
 const CPUS = availableParallelism();
@@ -76,6 +91,12 @@ const MAX_BODY_BYTES = 64 * 1024 * 1024;
 /** Finished renders are remembered this long, for late polls. */
 const KEEP_FINISHED_MS = 12 * 60 * 60 * 1000;
 const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
+const APP_URL = process.env.RENDER_WORKER_APP_URL?.trim().replace(/\/+$/, "") || "";
+const TUNNEL = process.env.RENDER_WORKER_TUNNEL?.trim().toLowerCase() || "";
+const FIXED_PUBLIC_URL = process.env.RENDER_WORKER_PUBLIC_URL?.trim().replace(/\/+$/, "") || "";
+const CLOUDFLARED = process.env.CLOUDFLARED_PATH?.trim() || "cloudflared";
+/** How often the worker checks it can still be reached through its own public address. */
+const SELF_CHECK_MS = 2 * 60 * 1000;
 
 function positiveInt(name: string, fallback: number): number {
   const parsed = Number.parseInt(process.env[name] ?? "", 10);
@@ -500,6 +521,138 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   return send(res, 404, { error: "Not found" });
 }
 
+// ── Public address ────────────────────────────────────────────────────────
+
+let publicUrl: string | null = null;
+let tunnel: ChildProcess | null = null;
+let shuttingDown = false;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Tells the app where this worker can be reached. Retries until the app takes
+ * it (a deploy in progress, a tunnel whose DNS is still propagating) or until
+ * a newer address replaces it.
+ */
+async function register(url: string) {
+  if (!APP_URL) {
+    log(`public address ${url}; RENDER_WORKER_APP_URL is not set, so the app was not told`);
+    return;
+  }
+  for (let attempt = 0; publicUrl === url && !shuttingDown; attempt += 1) {
+    try {
+      const response = await fetch(`${APP_URL}/api/render-worker/register`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (response.ok) {
+        log(`registered ${url} with ${APP_URL}`);
+        return;
+      }
+      const text = (await response.text()).slice(0, 300);
+      const hint =
+        response.status === 401
+          ? " (RENDER_WORKER_SECRET does not match CREATIVE_RENDER_WORKER_SECRET in Vercel)"
+          : response.status === 404
+            ? " (the app is not deployed with this feature, or CREATIVE_RENDER_WORKER_SECRET is not set in Vercel)"
+            : "";
+      log(`registration refused (${response.status})${hint}: ${text}`);
+    } catch (error) {
+      log("registration failed", errorMessage(error));
+    }
+    await sleep(Math.min(60_000, 5_000 * 2 ** Math.min(attempt, 4)));
+  }
+}
+
+function setPublicUrl(url: string) {
+  if (url === publicUrl) return;
+  publicUrl = url;
+  log(`public address ${url}`);
+  void register(url);
+}
+
+/** Runs a Cloudflare quick tunnel to this worker and restarts it whenever it dies. */
+function startTunnel() {
+  if (shuttingDown) return;
+  log("starting Cloudflare quick tunnel");
+  const child = spawn(CLOUDFLARED, ["tunnel", "--no-autoupdate", "--url", `http://localhost:${PORT}`], {
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  tunnel = child;
+  let restarted = false;
+  const restart = (reason: string) => {
+    if (restarted || tunnel !== child) return;
+    restarted = true;
+    tunnel = null;
+    publicUrl = null;
+    if (shuttingDown) return;
+    log(`tunnel stopped (${reason}); restarting in 5s`);
+    setTimeout(startTunnel, 5_000);
+  };
+  const onOutput = (chunk: Buffer) => {
+    const match = chunk.toString("utf8").match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+    if (match) setPublicUrl(match[0]);
+  };
+  child.stdout?.on("data", onOutput);
+  child.stderr?.on("data", onOutput);
+  child.on("error", (error) => {
+    log(`could not run cloudflared (${CLOUDFLARED}): ${error.message}. Install it, or set CLOUDFLARED_PATH.`);
+    restart("could not start");
+  });
+  child.on("exit", (code) => restart(`exit code ${code}`));
+}
+
+/**
+ * A quick tunnel can go dead without its process exiting. Three failed checks
+ * in a row through the public address restart it, which also re-registers.
+ */
+function watchTunnel() {
+  let failures = 0;
+  setInterval(async () => {
+    const url = publicUrl;
+    if (!url || !tunnel) return;
+    try {
+      const response = await fetch(`${url}/health`, {
+        headers: { Authorization: `Bearer ${SECRET}` },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!response.ok) throw new Error(`answered ${response.status}`);
+      failures = 0;
+    } catch (error) {
+      failures += 1;
+      log(`self-check through ${url} failed (${failures}/3)`, errorMessage(error));
+      if (failures >= 3 && publicUrl === url) {
+        failures = 0;
+        tunnel?.kill();
+      }
+    }
+  }, SELF_CHECK_MS).unref();
+}
+
+function startPublicAddress() {
+  if (FIXED_PUBLIC_URL) {
+    setPublicUrl(FIXED_PUBLIC_URL);
+  } else if (TUNNEL === "cloudflare") {
+    startTunnel();
+    watchTunnel();
+  } else {
+    log("no RENDER_WORKER_TUNNEL or RENDER_WORKER_PUBLIC_URL: reachable only where you expose port " + PORT);
+  }
+}
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    shuttingDown = true;
+    tunnel?.kill();
+    process.exit(0);
+  });
+}
+
 async function main() {
   if (SECRET.length < 16) {
     throw new Error("Set RENDER_WORKER_SECRET to a random string of at least 16 characters.");
@@ -521,7 +674,10 @@ async function main() {
       else res.end();
     });
   })
-    .on("listening", () => log(`listening on :${PORT} (${CPUS} CPUs, ${MAX_RENDERS} render(s) at once, ${RENDER_CONCURRENCY} tabs each)`))
+    .on("listening", () => {
+      log(`listening on :${PORT} (${CPUS} CPUs, ${MAX_RENDERS} render(s) at once, ${RENDER_CONCURRENCY} tabs each)`);
+      startPublicAddress();
+    })
     .listen(PORT);
 }
 

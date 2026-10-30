@@ -12,17 +12,35 @@ calls the job's signed callback URL.
 
 ## Turning it on
 
-1. Run the worker somewhere the internet can reach over HTTPS (see below).
-2. In Vercel → Project → Settings → Environment Variables, set:
-   - `CREATIVE_RENDER_WORKER_URL`: the worker's public URL, e.g. `https://render.example.com`
-   - `CREATIVE_RENDER_WORKER_SECRET`: the same value as the worker's `RENDER_WORKER_SECRET`
-3. Redeploy. New renders and previews go to the worker. A render that was
-   already running in a sandbox still finishes there. With the worker
-   configured, the build also skips creating a Vercel Sandbox snapshot.
+1. In Vercel → Project → Settings → Environment Variables, set
+   `CREATIVE_RENDER_WORKER_SECRET` (Production) to a random string
+   (`openssl rand -hex 32`), and redeploy once. That secret alone switches
+   rendering to the worker.
+2. On the rendering machine, create `.env.worker.local` in the repository
+   root (git ignores it):
 
-Unset either variable to go back to the Vercel Sandbox.
+   ```
+   RENDER_WORKER_SECRET=<the same secret>
+   RENDER_WORKER_APP_URL=https://<your app's domain>
+   RENDER_WORKER_TUNNEL=cloudflare
+   ```
 
-Make a secret with `openssl rand -hex 32`.
+3. Run `npm run render-worker`.
+
+The worker starts a free Cloudflare quick tunnel itself (`cloudflared` must
+be installed; no Cloudflare account is needed). It then tells the app its
+address through `/api/render-worker/register`. The app only saves the address
+after it has reached the worker there with the secret. When the tunnel
+restarts, or stops answering, the worker gets a new address and registers it
+again, so nothing in Vercel ever needs changing or redeploying.
+
+On a machine with a fixed public address (a VPS behind Caddy, a named
+tunnel), set `RENDER_WORKER_PUBLIC_URL` instead of `RENDER_WORKER_TUNNEL`.
+`CREATIVE_RENDER_WORKER_URL` in Vercel is optional. It is only used until a
+worker registers for the first time.
+
+Delete `CREATIVE_RENDER_WORKER_SECRET` and redeploy to go back to the Vercel
+Sandbox. A render already running in a sandbox still finishes there.
 
 ## Running it
 
@@ -44,7 +62,7 @@ or the platform's own TLS. A 4–8 vCPU machine renders faster than the
 
 ### Your own computer
 
-Needs Node 22 and the repository checked out:
+Needs Node 22, `cloudflared`, and the repository checked out:
 
 ```bash
 npm ci
@@ -55,22 +73,21 @@ RENDER_WORKER_SECRET=change-me npm run render-worker
 ```
 
 The first start downloads Chrome Headless Shell and bundles the composition
-(about half a minute). To reach it from Vercel without opening a port, use a
-tunnel. A free Cloudflare quick tunnel works:
-
-```bash
-cloudflared tunnel --url http://localhost:8787
-```
-
-Set `CREATIVE_RENDER_WORKER_URL` to the `https://….trycloudflare.com` address
-it prints. Quick-tunnel addresses change on every restart; a named Cloudflare
-tunnel keeps one address. Renders only run while the computer is awake.
+(about half a minute). Then it starts the tunnel and registers it. Look for
+`registered https://….trycloudflare.com` in its output. Renders only run while
+the computer is awake and the worker is running.
 
 ## Settings
 
+Set these in the environment or in `.env.worker.local` in the repository root.
+
 | Variable | Default | |
 | --- | --- | --- |
-| `RENDER_WORKER_SECRET` | required | Bearer token the app must send; 16+ characters |
+| `RENDER_WORKER_SECRET` | required | Shared with the app's `CREATIVE_RENDER_WORKER_SECRET`; 16+ characters |
+| `RENDER_WORKER_APP_URL` | none | The app's address; the worker registers its public address there |
+| `RENDER_WORKER_TUNNEL` | none | `cloudflare` runs a free quick tunnel and keeps it registered |
+| `RENDER_WORKER_PUBLIC_URL` | none | A fixed public https address to register instead |
+| `CLOUDFLARED_PATH` | `cloudflared` | The cloudflared executable |
 | `PORT` | `8787` | |
 | `RENDER_WORKER_MAX_RENDERS` | `1` | MP4 renders at once; the rest wait in a queue |
 | `RENDER_WORKER_CONCURRENCY` | CPUs − 1 | Browser tabs drawing frames per render |
@@ -84,8 +101,9 @@ tunnel keeps one address. Renders only run while the computer is awake.
 
 - Render state lives in memory. If the worker restarts, its running renders
   fail. A render whose MP4 was already uploaded still counts as completed.
-- While the worker is unreachable, its renders keep showing as rendering. They
-  are given up on after six hours.
+- While the worker is unreachable, a render already running keeps showing as
+  rendering, and is given up on after six hours. A new render started while
+  it is unreachable fails at once with "The render worker is unreachable".
 - Each job's media is downloaded once into the job's own folder and deleted
   afterwards, so storage is read once per job, never once per frame.
 - The worker needs outbound HTTPS to the storage host (`*.storage.dev`), to

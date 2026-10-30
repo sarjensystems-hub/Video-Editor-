@@ -655,7 +655,7 @@ export class RemotionVercelCreativeRenderAdapter implements CreativeRenderAdapte
 
 /**
  * Picks the renderer per call. New work goes to the self-hosted worker when
- * CREATIVE_RENDER_WORKER_URL is set and to the Vercel Sandbox otherwise; a
+ * CREATIVE_RENDER_WORKER_SECRET is set and to the Vercel Sandbox otherwise; a
  * render already running is always polled and stopped by the backend that
  * started it, so switching the variable never strands one mid-flight.
  */

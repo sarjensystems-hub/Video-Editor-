@@ -126,9 +126,9 @@ which means the AI can hand back a finished file rather than a to-do. A
 minute of vertical 1080p takes a few minutes of render time.
 
 Renders can also run on a machine you control instead of a Vercel Sandbox:
-a VPS, a Fly/Railway box, or your own computer behind a tunnel. Set
-`CREATIVE_RENDER_WORKER_URL` and `CREATIVE_RENDER_WORKER_SECRET` and run the
-worker described in [render-worker/README.md](render-worker/README.md). The
+a VPS, a Fly/Railway box, or your own computer behind a free tunnel. Set
+`CREATIVE_RENDER_WORKER_SECRET` and run the worker described in
+[render-worker/README.md](render-worker/README.md); it reports its own address. The
 output is identical; only the machine changes.
 
 ## One licence to check

@@ -4,7 +4,9 @@
  * Remotion composition, on a VPS, a Fly/Railway machine or someone's own
  * computer behind a tunnel.
  *
- * Switched on by CREATIVE_RENDER_WORKER_URL and CREATIVE_RENDER_WORKER_SECRET.
+ * Switched on by CREATIVE_RENDER_WORKER_SECRET. The worker reports its own
+ * public address on start (render-worker-registry.ts); CREATIVE_RENDER_WORKER_URL
+ * is only a fallback for one that has never registered.
  * The worker holds no credentials: it is handed signed URLs to download media
  * from and to PUT its output to, and it calls the render's signed callback URL
  * when it is done, exactly as the sandbox did.
@@ -40,6 +42,7 @@ import {
   type RenderWorkerStillsRequest,
   type RenderWorkerStillsResponse,
 } from "./render-worker-protocol";
+import { normalizeRenderWorkerUrl, registeredRenderWorkerUrl } from "./render-worker-registry";
 import type { CreativeRemotionAssetMap } from "./remotion";
 import { planSandboxMedia, type PreviewCopyStore } from "./sandbox-media";
 
@@ -60,15 +63,30 @@ interface RenderWorkerConfig {
   secret: string;
 }
 
-function renderWorkerConfig(): RenderWorkerConfig | null {
-  const url = process.env.CREATIVE_RENDER_WORKER_URL?.trim();
-  const secret = process.env.CREATIVE_RENDER_WORKER_SECRET?.trim();
-  return url && secret ? { url: url.replace(/\/+$/, ""), secret } : null;
+function renderWorkerSecret(): string | null {
+  return process.env.CREATIVE_RENDER_WORKER_SECRET?.trim() || null;
 }
 
-/** Whether new renders and previews go to the self-hosted worker. */
+/**
+ * The address the worker last registered (see render-worker-registry.ts),
+ * falling back to CREATIVE_RENDER_WORKER_URL for one that never has.
+ */
+async function renderWorkerConfig(): Promise<RenderWorkerConfig | null> {
+  const secret = renderWorkerSecret();
+  if (!secret) return null;
+  const url = (await registeredRenderWorkerUrl()) ?? normalizeRenderWorkerUrl(process.env.CREATIVE_RENDER_WORKER_URL);
+  if (!url) {
+    throw new Error("The render worker has not registered its address yet. Start it on the rendering machine (npm run render-worker).");
+  }
+  return { url, secret };
+}
+
+/**
+ * Whether new renders and previews go to the self-hosted worker. The secret
+ * alone decides: the worker reports its own address when it starts.
+ */
 export function renderWorkerConfigured(): boolean {
-  return renderWorkerConfig() !== null;
+  return renderWorkerSecret() !== null;
 }
 
 /** Whether a handle (or a recorded sandbox name) belongs to the worker. */
@@ -81,8 +99,8 @@ function workerJobId(name: string): string {
 }
 
 async function workerFetch(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
-  const config = renderWorkerConfig();
-  if (!config) throw new Error("The render worker is not configured (CREATIVE_RENDER_WORKER_URL / CREATIVE_RENDER_WORKER_SECRET).");
+  const config = await renderWorkerConfig();
+  if (!config) throw new Error("The render worker is not configured (CREATIVE_RENDER_WORKER_SECRET).");
   const { timeoutMs = CONTROL_TIMEOUT_MS, headers, ...rest } = init;
   try {
     return await fetch(`${config.url}${path}`, {
