@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { presignGet } from "@/lib/b2";
 import { downloadFilename, isTrustedMediaUrl } from "@/lib/creative/media-url";
+import { isUserStoragePath, storagePathFromMediaUrl } from "@/lib/storage-paths";
 
 export const runtime = "nodejs";
 
 /**
- * Streams a finished render back as an attachment.
+ * Saves a finished render as a file.
  *
+ * Renders are stored as `/media/<path>` on our own domain. For those, this
+ * redirects to a short-lived signed storage URL that carries the attachment
+ * filename itself, so the browser saves rather than plays, and tens of
+ * megabytes never pass through a function. Only a path inside the caller's
+ * own renders folder is signed.
+ *
+ * Older renders stored as Supabase Storage URLs are still streamed back:
  * This route exists because the `download` attribute on an anchor is ignored
  * cross-origin: the files live on the storage host, so a direct link opens the
  * video instead of saving it. Re-serving from our own origin is what makes the
@@ -35,9 +44,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const source = String(job.output_url);
+  const storagePath = storagePathFromMediaUrl(source);
+  const ownRender = storagePath !== null && isUserStoragePath(user.id, "renders", storagePath);
   // The URL comes from our own render pipeline, but this route turns a stored
-  // string into a server-side fetch, so it is checked rather than trusted.
-  if (!isTrustedMediaUrl(source)) {
+  // string into a signed URL or a server-side fetch, so it is checked rather
+  // than trusted.
+  if (!ownRender && !isTrustedMediaUrl(source)) {
     return NextResponse.json({ error: "That render is not in Studio storage." }, { status: 400 });
   }
 
@@ -54,6 +66,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     sceneId ? String(sceneId) : "film",
     job.finished_at ? String(job.finished_at) : null,
   );
+
+  if (ownRender) {
+    const signed = await presignGet(storagePath, 10 * 60, { downloadName: filename });
+    return NextResponse.redirect(signed, { status: 302, headers: { "Cache-Control": "private, no-store" } });
+  }
 
   const upstream = await fetch(source).catch(() => null);
   if (!upstream?.ok || !upstream.body) {
