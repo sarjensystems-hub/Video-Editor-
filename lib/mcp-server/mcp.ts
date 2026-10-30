@@ -374,6 +374,16 @@ const CREATIVE_MCP_TOOLS = [
         start_ms: { type: "number", minimum: 0, description: "Optional start of the rendered window in milliseconds, relative to the selected film or scene." },
         end_ms: { type: "number", minimum: 0, description: "Optional exclusive end of the rendered window in milliseconds. Must be greater than start_ms and within the selected scope." },
         quality: { type: "string", enum: ["draft", "final"], default: "final", description: "Draft renders at half scale with a lighter encoding profile; final preserves native canvas scale." },
+        file_size: {
+          type: "string",
+          enum: ["original", "high_quality", "small"],
+          description:
+            "Required for a final export, and the user's choice, never yours: before every final export, ask the user which of these they want and pass their answer. " +
+            "original - the largest file, encoded as exports always were. " +
+            "high_quality - around 30% of the size of original with no visible difference; the usual choice for sharing and publishing. " +
+            "small - around 15% of the size of original; faint grain and texture get slightly smoother; for quick sharing in chat apps where a tiny file matters most. " +
+            "All three are standard H.264 MP4s at full resolution that play everywhere. Ignored for draft renders.",
+        },
       },
       required: ["project_id"],
     },

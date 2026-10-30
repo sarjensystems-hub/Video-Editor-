@@ -11,6 +11,7 @@ import { InsufficientCreditsError, chargeCreativeRenderCredits, refundCreativeRe
 import { getCreativeDurationMs } from "@/lib/creative/evaluate";
 import { extractSceneDocument, findSceneExportWindow } from "@/lib/creative/scene-export";
 import { validateCreativeDocument } from "@/lib/creative/validate";
+import { isCreativeRenderFileSize, type CreativeRenderFileSize } from "@/lib/creative/render-options";
 import { withOpenRouterKeyScope } from "@/lib/openrouter-key-route";
 import { userStoragePath } from "@/lib/storage-paths";
 import { requestOrigin } from "@/lib/app-url";
@@ -80,10 +81,14 @@ async function handlePOST(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const renderSupabase = createServiceClient();
 
-  const body = (await request.json().catch(() => null)) as { projectId?: string; sceneId?: string } | null;
+  const body = (await request.json().catch(() => null)) as { projectId?: string; sceneId?: string; fileSize?: unknown } | null;
   const projectId = body?.projectId?.trim();
   if (!projectId) return NextResponse.json({ error: "projectId is required" }, { status: 400 });
   const sceneId = body?.sceneId?.trim() || null;
+  if (body?.fileSize !== undefined && !isCreativeRenderFileSize(body.fileSize)) {
+    return NextResponse.json({ error: "fileSize must be original, high_quality or small" }, { status: 400 });
+  }
+  const fileSize: CreativeRenderFileSize = isCreativeRenderFileSize(body?.fileSize) ? body.fileSize : "original";
 
   const { data: project, error: projectError } = await supabase
     .from("creative_projects")
@@ -137,7 +142,7 @@ async function handlePOST(request: Request) {
   const renderDurationMs = getCreativeDurationMs(document);
   const renderCost = creativeRenderCost(renderDurationMs);
   const baseMetadata = {
-    required_asset_ids: requiredAssetIds, scene_id: sceneId, duration_ms: renderDurationMs,
+    required_asset_ids: requiredAssetIds, scene_id: sceneId, duration_ms: renderDurationMs, file_size: fileSize,
     output_width: document.canvas.width, output_height: document.canvas.height,
   };
   const { data: job, error: jobError } = await renderSupabase
@@ -196,6 +201,7 @@ async function handlePOST(request: Request) {
       const handle = await creativeRenderAdapter.startDetached({
         document,
         assets,
+        options: { fileSize },
         outputKey: userStoragePath(user.id, "renders", `${job.id}.mp4`),
         callbackUrl,
         onSandboxCreated: async (sandboxName) => {

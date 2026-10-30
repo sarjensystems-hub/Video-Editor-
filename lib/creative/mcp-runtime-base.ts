@@ -15,7 +15,7 @@ import { RENDER_JOB_STALE_MESSAGE, canClaimRenderJobPoll, claimRenderJobPoll, is
 import { resolveCreativeFrameAtTime } from "./frame-time";
 import { extractSceneDocument, findSceneExportWindow } from "./scene-export";
 import { CREATIVE_CANVAS_MAX_DIMENSION, type CreativeDocument } from "./schema";
-import { resolveCreativeRenderOptions, type CreativeRenderQuality, type CreativeRenderWindowOptions } from "./render-options";
+import { isCreativeRenderFileSize, resolveCreativeRenderOptions, type CreativeRenderFileSize, type CreativeRenderQuality, type CreativeRenderWindowOptions } from "./render-options";
 import type { CreativeTransaction } from "./transactions";
 import {
   applyRuntimeCreativeTransaction,
@@ -286,19 +286,38 @@ export interface CreativeProjectRenderInput {
   startMs?: number;
   endMs?: number;
   quality?: CreativeRenderQuality;
+  fileSize?: CreativeRenderFileSize;
 }
+
+/**
+ * The file size is the user's call, so a final export without one is refused
+ * with the question to put to them, rather than silently picking a default.
+ */
+export const RENDER_FILE_SIZE_QUESTION =
+  "file_size is required for a final export and must be the user's choice. Ask the user which file size they want, then call again with it: " +
+  "\"original\" (largest, as exports always were), \"high_quality\" (around 30% of the size, no visible difference) or " +
+  "\"small\" (around 15% of the size, faint grain smoothed; for chat apps).";
 
 export function parseCreativeProjectRenderInput(value: unknown): CreativeProjectRenderInput {
   const input = objectInput(value);
   const quality = input.quality;
   if (quality !== undefined && quality !== "draft" && quality !== "final") throw new Error("quality must be draft or final");
   const optionalMs = (key: "start_ms" | "end_ms") => input[key] === undefined ? undefined : parseTimeMs(input[key], key);
+  const projectId = parseProjectId(input);
+  const startMs = optionalMs("start_ms");
+  const endMs = optionalMs("end_ms");
+  const fileSize = input.file_size;
+  if (fileSize !== undefined && !isCreativeRenderFileSize(fileSize)) {
+    throw new Error("file_size must be original, high_quality or small");
+  }
+  if (quality !== "draft" && fileSize === undefined) throw new Error(RENDER_FILE_SIZE_QUESTION);
   return {
-    projectId: parseProjectId(input),
+    projectId,
     sceneId: typeof input.scene_id === "string" && input.scene_id.trim() ? input.scene_id.trim() : null,
-    startMs: optionalMs("start_ms"),
-    endMs: optionalMs("end_ms"),
+    startMs,
+    endMs,
     quality: quality as CreativeRenderQuality | undefined,
+    ...(fileSize === undefined ? {} : { fileSize }),
   };
 }
 
@@ -398,7 +417,7 @@ function frameSummary(frame: RenderedFrame) {
 }
 
 async function renderProject(context: McpUserContext, request: CreativeProjectRenderInput) {
-  const { projectId, sceneId, startMs, endMs, quality } = request;
+  const { projectId, sceneId, startMs, endMs, quality, fileSize } = request;
   const runtime = await runtimeContext(context);
   const project = await getRuntimeCreativeProject(runtime, projectId);
   if (!project) throw new Error("Project not found");
@@ -410,12 +429,12 @@ async function renderProject(context: McpUserContext, request: CreativeProjectRe
     throw new Error(`Scene ${sceneId} is not part of this project`);
   }
   const document = sceneId ? extractSceneDocument(project.document, sceneId) : project.document;
-  const requestedOptions: CreativeRenderWindowOptions = { startMs, endMs, quality };
+  const requestedOptions: CreativeRenderWindowOptions = { startMs, endMs, quality, fileSize };
   const resolvedOptions = resolveCreativeRenderOptions(document, requestedOptions);
   const renderMetadata = {
     required_asset_ids: [] as string[], source: "mcp", scene_id: sceneId,
     start_ms: resolvedOptions.startMs, end_ms: resolvedOptions.endMs, duration_ms: resolvedOptions.durationMs,
-    quality: quality ?? "final", output_width: Math.max(1, Math.round(document.canvas.width * resolvedOptions.scale)),
+    quality: quality ?? "final", file_size: quality === "draft" ? null : fileSize ?? "original", output_width: Math.max(1, Math.round(document.canvas.width * resolvedOptions.scale)),
     output_height: Math.max(1, Math.round(document.canvas.height * resolvedOptions.scale)),
   };
   const { assets, requiredAssetIds } = await resolveOwnedAssetMap(context, document);
@@ -512,6 +531,7 @@ async function renderProject(context: McpUserContext, request: CreativeProjectRe
     end_ms: resolvedOptions.endMs,
     duration_ms: resolvedOptions.durationMs,
     quality: quality ?? "final",
+    file_size: quality === "draft" ? null : fileSize ?? "original",
     poll_with: "studio_get_render_job",
     estimated_completion_ms: null,
     note: "Rendering runs as a reconnectable sandbox command. Poll studio_get_render_job with this job_id until status is completed or failed; each poll advances progress/finalization and returns estimated_completion_ms once measurable.",
@@ -1230,6 +1250,7 @@ export async function handleCreativeMcpTool(
                   startMs: typeof metadata.start_ms === "number" ? metadata.start_ms : undefined,
                   endMs: typeof metadata.end_ms === "number" ? metadata.end_ms : undefined,
                   quality: metadata.quality === "draft" ? "draft" : "final",
+                  ...(isCreativeRenderFileSize(metadata.file_size) ? { fileSize: metadata.file_size } : {}),
                 },
                 outputKey: detached.outputKey,
                 previews: previewStore(context),

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { RENDER_JOB_STALE_MESSAGE, canClaimRenderJobPoll, claimRenderJobPoll, isRenderJobStale, shouldRetryDetachedRender, updateClaimedRenderJob } from "@/lib/creative/render-job";
+import { isCreativeRenderFileSize } from "@/lib/creative/render-options";
 import { creativeRenderAdapter, type CreativeDetachedRenderHandle } from "@/lib/creative/render";
 import { refundCreativeRenderCredits } from "@/lib/creative/metering";
 import { getCreativeInputAssetMap, getCreativeDocumentAssetIds } from "@/lib/creative/remotion";
@@ -74,6 +75,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
             const handle = await creativeRenderAdapter.startDetached({
               document: retryDocument,
               assets: getCreativeInputAssetMap(rows.map((asset) => ({ id: asset.id, url: asset.url, mimeType: asset.mime_type }))),
+              ...(isCreativeRenderFileSize(metadata.file_size) ? { options: { fileSize: metadata.file_size } } : {}),
               outputKey: detached.outputKey,
               callbackUrl: jobCallbackUrl(await requestOrigin().catch(() => ""), "render", id),
             });

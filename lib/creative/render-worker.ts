@@ -189,6 +189,7 @@ export class RemoteWorkerCreativeRenderAdapter implements CreativeRenderAdapter 
         ...(options.frameRange ? { frameRange: options.frameRange } : {}),
         scale: options.scale,
         ...(options.crf === undefined ? {} : { crf: options.crf }),
+        ...(options.x264Preset ? { x264Preset: options.x264Preset } : {}),
         jpegQuality: options.jpegQuality,
       },
       putUrl: await presignPut(request.outputKey, WORKER_URL_TTL_SECONDS),

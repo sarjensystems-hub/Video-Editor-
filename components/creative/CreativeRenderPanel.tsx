@@ -63,6 +63,14 @@ export interface ExportScene {
 }
 
 type ExportScope = "film" | "clip";
+type ExportFileSize = "original" | "high_quality" | "small";
+
+/** What each file size means, in the words the panel shows under the choice. */
+const FILE_SIZE_NOTES: Record<ExportFileSize, string> = {
+  original: "Largest file, encoded as exports always were.",
+  high_quality: "Around 30% of the size, with no visible difference. Best for sharing and publishing.",
+  small: "Around 15% of the size. Faint grain gets slightly smoother. For quick sharing in chat apps.",
+};
 
 export default function CreativeRenderPanel({
   projectId,
@@ -78,6 +86,7 @@ export default function CreativeRenderPanel({
   const [job, setJob] = useState<RenderJob | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [scope, setScope] = useState<ExportScope>("film");
+  const [fileSize, setFileSize] = useState<ExportFileSize>("high_quality");
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(scenes[0]?.id ?? null);
   const [history, setHistory] = useState<RenderJob[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -97,7 +106,7 @@ export default function CreativeRenderPanel({
       const response = await fetch("/api/creative/render", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ projectId, sceneId: scope === "clip" ? selectedSceneId : undefined }),
+        body: JSON.stringify({ projectId, sceneId: scope === "clip" ? selectedSceneId : undefined, fileSize }),
       });
       const { data, raw } = await readJson(response);
       if (!response.ok || !data) throw new Error(describeFailure(response, data, raw));
@@ -110,7 +119,7 @@ export default function CreativeRenderPanel({
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
     }
-  }, [projectId, scope, selectedSceneId, scenes]);
+  }, [projectId, scope, selectedSceneId, scenes, fileSize]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -219,6 +228,19 @@ export default function CreativeRenderPanel({
           { value: "clip", label: "Single clip" },
         ]}
       />
+
+      <Segmented
+        className="mb-1"
+        label="File size"
+        value={fileSize}
+        onChange={(next) => setFileSize(next)}
+        options={[
+          { value: "original", label: "Original" },
+          { value: "high_quality", label: "High quality" },
+          { value: "small", label: "Small" },
+        ]}
+      />
+      <p className="mb-3 text-xs leading-relaxed text-ink-faint">{FILE_SIZE_NOTES[fileSize]}</p>
 
       {scope === "film" ? (
         <p className="text-xs leading-relaxed text-ink-faint">

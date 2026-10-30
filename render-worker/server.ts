@@ -368,6 +368,7 @@ async function runRender(job: RenderJob) {
           ...(options.frameRange ? { frameRange: options.frameRange } : {}),
           scale: options.scale,
           ...(options.crf === undefined ? {} : { crf: options.crf }),
+          ...(options.x264Preset ? { x264Preset: options.x264Preset } : {}),
           jpegQuality: options.jpegQuality,
           concurrency,
           chromiumOptions: CHROMIUM,

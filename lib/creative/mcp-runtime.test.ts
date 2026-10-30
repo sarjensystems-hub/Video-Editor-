@@ -173,11 +173,23 @@ describe("creative MCP runtime", () => {
     expect(parseCreativeProjectRenderInput({ project_id: "project-1", start_ms: 1000, end_ms: 2500, quality: "draft" })).toEqual({
       projectId: "project-1", sceneId: null, startMs: 1000, endMs: 2500, quality: "draft",
     });
-    expect(parseCreativeProjectRenderInput({ project_id: "project-1", scene_id: " scene-1 " })).toEqual({
-      projectId: "project-1", sceneId: "scene-1", startMs: undefined, endMs: undefined, quality: undefined,
+    expect(parseCreativeProjectRenderInput({ project_id: "project-1", scene_id: " scene-1 ", file_size: "small" })).toEqual({
+      projectId: "project-1", sceneId: "scene-1", startMs: undefined, endMs: undefined, quality: undefined, fileSize: "small",
     });
     expect(() => parseCreativeProjectRenderInput({ project_id: "project-1", quality: "preview" })).toThrow(/quality/i);
     expect(() => parseCreativeProjectRenderInput({ project_id: "project-1", start_ms: -1 })).toThrow(/start_ms/i);
+  });
+
+  it("makes the assistant ask the user for a file size before a final export", () => {
+    // Missing on a final export: refused with the question to put to the user.
+    expect(() => parseCreativeProjectRenderInput({ project_id: "project-1" })).toThrow(/Ask the user which file size/);
+    expect(() => parseCreativeProjectRenderInput({ project_id: "project-1", quality: "final" })).toThrow(/Ask the user/);
+    expect(() => parseCreativeProjectRenderInput({ project_id: "project-1", file_size: "tiny" })).toThrow(/original, high_quality or small/);
+    // A draft is for checking timing, so it needs no choice.
+    expect(parseCreativeProjectRenderInput({ project_id: "project-1", quality: "draft" }).fileSize).toBeUndefined();
+    for (const fileSize of ["original", "high_quality", "small"]) {
+      expect(parseCreativeProjectRenderInput({ project_id: "project-1", file_size: fileSize }).fileSize).toBe(fileSize);
+    }
   });
 
   it("requires finite non-negative milliseconds for a rendered frame preview", () => {

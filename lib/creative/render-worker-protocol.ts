@@ -51,6 +51,7 @@ export interface RenderWorkerRenderOptions {
   frameRange?: [number, number];
   scale: number;
   crf?: number;
+  x264Preset?: "slow";
   jpegQuality: number;
 }
 
