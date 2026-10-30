@@ -90,7 +90,8 @@ Set these in the environment or in `.env.worker.local` in the repository root.
 | `CLOUDFLARED_PATH` | `cloudflared` | The cloudflared executable |
 | `PORT` | `8787` | |
 | `RENDER_WORKER_MAX_RENDERS` | `1` | MP4 renders at once; the rest wait in a queue |
-| `RENDER_WORKER_CONCURRENCY` | CPUs − 1 | Browser tabs drawing frames per render |
+| `RENDER_WORKER_CONCURRENCY` | CPUs − 1, at most 6 | Browser tabs drawing frames per render |
+| `RENDER_WORKER_VIDEO_CACHE_MB` | 40% of RAM, 2–8 GB | Memory for decoded video frames |
 | `RENDER_WORKER_BUNDLE_DIR` | bundles at start | A prebuilt `remotion bundle` output |
 | `RENDER_WORKER_TMP` | OS temp dir | Where MP4s are written before upload |
 | `RENDER_WORKER_GL` | Remotion's default | Chrome OpenGL backend (`angle`, `egl`, `swangle`, …) |
@@ -98,6 +99,13 @@ Set these in the environment or in `.env.worker.local` in the repository root.
 | `FFMPEG_PATH` | Remotion's bundled ffmpeg | Used to make small preview copies of large videos |
 
 ## What to know
+
+- High-bitrate footage needs memory. Every tab asks for a different moment of
+  each video, so too many tabs, or too small a frame cache, either makes the
+  video skip ahead and hold, or fails with "No frame found at position". The
+  worker therefore caps tabs at 6 and fixes the cache size up front, rather
+  than letting Remotion size it from whatever memory happened to be free. A
+  render that still hits a cache miss is retried once with half the tabs.
 
 - Render state lives in memory. If the worker restarts, its running renders
   fail. A render whose MP4 was already uploaded still counts as completed.

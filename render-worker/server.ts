@@ -14,7 +14,9 @@
  *   RENDER_WORKER_SECRET        required; the app sends it as a bearer token
  *   PORT                        default 8787
  *   RENDER_WORKER_MAX_RENDERS   MP4 renders at once, default 1 (others queue)
- *   RENDER_WORKER_CONCURRENCY   browser tabs per render, default CPUs - 1
+ *   RENDER_WORKER_CONCURRENCY   browser tabs per render, default CPUs - 1, at most 6
+ *   RENDER_WORKER_VIDEO_CACHE_MB  memory for decoded video frames, default 40% of RAM
+ *                               (2-8 GB)
  *   RENDER_WORKER_BUNDLE_DIR    a prebuilt `remotion bundle`; bundled at start otherwise
  *   RENDER_WORKER_TMP           scratch folder for MP4s, default the OS temp dir
  *   RENDER_WORKER_GL            Chrome OpenGL backend (angle, egl, swangle, ...)
@@ -41,7 +43,7 @@ import { createWriteStream, existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
-import { availableParallelism, tmpdir } from "node:os";
+import { availableParallelism, freemem, tmpdir, totalmem } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -78,8 +80,29 @@ const SECRET = process.env.RENDER_WORKER_SECRET?.trim() ?? "";
 const PORT = positiveInt("PORT", 8787);
 const CPUS = availableParallelism();
 const MAX_RENDERS = positiveInt("RENDER_WORKER_MAX_RENDERS", 1);
-/** One core is left for the encoder, which runs alongside the browser tabs. */
-const RENDER_CONCURRENCY = positiveInt("RENDER_WORKER_CONCURRENCY", Math.max(1, CPUS - 1));
+/**
+ * One core is left for the encoder, which runs alongside the browser tabs.
+ * Capped at six: every tab asks the video frame cache for a different moment
+ * of each video, and on a 12-core desktop eleven tabs over a high-bitrate film
+ * evicted frames faster than they were used. The render then either showed
+ * the wrong frame (a stutter that skips ahead and holds) or failed with
+ * "No frame found at position". Past six tabs the encoder is the bottleneck
+ * anyway.
+ */
+const RENDER_CONCURRENCY = positiveInt("RENDER_WORKER_CONCURRENCY", Math.min(6, Math.max(1, CPUS - 1)));
+const STILL_CONCURRENCY = Math.min(RENDER_CONCURRENCY, CPUS);
+const GB = 1024 ** 3;
+/**
+ * Remotion sizes the decoded-frame cache to half the memory free when a render
+ * starts, so a desktop already busy with other work gets a cache too small to
+ * hold the frames its tabs are using. A fixed size, from total memory, keeps it
+ * the same however busy the machine was at that moment.
+ */
+const VIDEO_CACHE_BYTES = (() => {
+  const mb = positiveInt("RENDER_WORKER_VIDEO_CACHE_MB", 0);
+  if (mb) return mb * 1024 * 1024;
+  return Math.round(Math.min(8 * GB, Math.max(2 * GB, totalmem() * 0.4)));
+})();
 const TMP = path.resolve(process.env.RENDER_WORKER_TMP?.trim() || path.join(tmpdir(), "studio-render-worker"));
 const GL = (process.env.RENDER_WORKER_GL?.trim() || null) as ChromiumOptions["gl"];
 const CHROMIUM: ChromiumOptions = GL ? { gl: GL } : {};
@@ -326,29 +349,43 @@ async function runRender(job: RenderJob) {
       chromiumOptions: CHROMIUM,
       browserExecutable: BROWSER_EXECUTABLE,
       timeoutInMilliseconds: FRAME_TIMEOUT_MS,
+      offthreadVideoCacheSizeInBytes: VIDEO_CACHE_BYTES,
     });
 
-    job.stage = "rendering";
     const { options } = request;
-    await renderMedia({
-      composition,
-      serveUrl: bundleDir,
-      codec: "h264",
-      outputLocation: output,
-      inputProps: media.inputProps,
-      ...(options.frameRange ? { frameRange: options.frameRange } : {}),
-      scale: options.scale,
-      ...(options.crf === undefined ? {} : { crf: options.crf }),
-      jpegQuality: options.jpegQuality,
-      concurrency: RENDER_CONCURRENCY,
-      chromiumOptions: CHROMIUM,
-      browserExecutable: BROWSER_EXECUTABLE,
-      timeoutInMilliseconds: FRAME_TIMEOUT_MS,
-      cancelSignal: job.cancel.cancelSignal,
-      onProgress: ({ progress }) => {
-        job.progress = 0.03 + progress * 0.92;
-      },
-    });
+    // A frame-cache miss is not a broken document: retry once with half the
+    // tabs, which halves how many moments of each video the cache must hold.
+    for (let concurrency = RENDER_CONCURRENCY; ; concurrency = Math.max(1, Math.floor(concurrency / 2))) {
+      job.stage = "rendering";
+      job.progress = 0.03;
+      try {
+        await renderMedia({
+          composition,
+          serveUrl: bundleDir,
+          codec: "h264",
+          outputLocation: output,
+          inputProps: media.inputProps,
+          ...(options.frameRange ? { frameRange: options.frameRange } : {}),
+          scale: options.scale,
+          ...(options.crf === undefined ? {} : { crf: options.crf }),
+          jpegQuality: options.jpegQuality,
+          concurrency,
+          chromiumOptions: CHROMIUM,
+          browserExecutable: BROWSER_EXECUTABLE,
+          timeoutInMilliseconds: FRAME_TIMEOUT_MS,
+          offthreadVideoCacheSizeInBytes: VIDEO_CACHE_BYTES,
+          cancelSignal: job.cancel.cancelSignal,
+          onProgress: ({ progress }) => {
+            job.progress = 0.03 + progress * 0.92;
+          },
+        });
+        break;
+      } catch (error) {
+        const retryable = /No frame found at position/i.test(errorMessage(error));
+        if (!retryable || job.cancelled || concurrency === 1 || concurrency < RENDER_CONCURRENCY) throw error;
+        log(`render ${job.id}: video frame cache miss at ${concurrency} tabs; retrying with ${Math.max(1, Math.floor(concurrency / 2))}`);
+      }
+    }
 
     job.stage = "uploading";
     job.progress = 0.96;
@@ -427,8 +464,9 @@ async function renderStills(request: RenderWorkerStillsRequest): Promise<RenderW
       inputProps: media.inputProps,
       puppeteerInstance: browser,
       timeoutInMilliseconds: FRAME_TIMEOUT_MS,
+      offthreadVideoCacheSizeInBytes: VIDEO_CACHE_BYTES,
     });
-    const frames = await mapLimit(request.frames, CPUS, async (frame) => {
+    const frames = await mapLimit(request.frames, STILL_CONCURRENCY, async (frame) => {
       const { buffer } = await renderStill({
         composition,
         serveUrl: bundleDir,
@@ -437,6 +475,7 @@ async function renderStills(request: RenderWorkerStillsRequest): Promise<RenderW
         imageFormat: "png",
         puppeteerInstance: browser,
         timeoutInMilliseconds: FRAME_TIMEOUT_MS,
+        offthreadVideoCacheSizeInBytes: VIDEO_CACHE_BYTES,
       });
       if (!buffer || buffer.byteLength <= 0) throw new Error("Renderer produced an empty frame");
       return { frame, png: buffer.toString("base64") };
@@ -682,7 +721,10 @@ async function main() {
     });
   })
     .on("listening", () => {
-      log(`listening on :${PORT} (${CPUS} CPUs, ${MAX_RENDERS} render(s) at once, ${RENDER_CONCURRENCY} tabs each)`);
+      log(
+        `listening on :${PORT} (${CPUS} CPUs, ${MAX_RENDERS} render(s) at once, ${RENDER_CONCURRENCY} tabs each, ` +
+          `${(VIDEO_CACHE_BYTES / GB).toFixed(1)} GB video cache; ${(totalmem() / GB).toFixed(1)} GB RAM, ${(freemem() / GB).toFixed(1)} GB free)`,
+      );
       startPublicAddress();
     })
     .listen(PORT);
