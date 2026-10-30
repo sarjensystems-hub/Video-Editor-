@@ -653,6 +653,13 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
+// A crash must not leave cloudflared running: whatever restarts the worker
+// starts a fresh tunnel, and the old one would linger forever.
+process.on("exit", () => {
+  shuttingDown = true;
+  tunnel?.kill();
+});
+
 async function main() {
   if (SECRET.length < 16) {
     throw new Error("Set RENDER_WORKER_SECRET to a random string of at least 16 characters.");
