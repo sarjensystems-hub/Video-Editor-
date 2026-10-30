@@ -104,6 +104,13 @@
 - The HTTP contract is `lib/creative/render-worker-protocol.ts`, shared by
   both sides; change it there.
 
+## Accounts
+
+- Internal tool: there is no public sign-up. `/signup` only redirects to
+  `/login`, and "Allow new users to sign up" is off in Supabase. Accounts are
+  added by the owner in Supabase (Authentication → Users). Do not bring back
+  a sign-up page or call `auth.signUp`.
+
 ## No workspaces
 
 - There are no workspaces. Projects, assets, folders, renders and videos

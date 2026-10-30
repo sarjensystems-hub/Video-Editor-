@@ -61,12 +61,8 @@ export async function middleware(request: NextRequest) {
     if (pending) return NextResponse.redirect(new URL(pending, request.url));
   }
 
-  // If a logged-in user visits /login or /signup, redirect them to /dashboard
-  if (
-    user &&
-    (request.nextUrl.pathname === "/login" ||
-      request.nextUrl.pathname === "/signup")
-  ) {
+  // If a logged-in user visits /login, redirect them to /dashboard
+  if (user && request.nextUrl.pathname === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

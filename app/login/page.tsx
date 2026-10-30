@@ -45,14 +45,7 @@ export default function LoginPage() {
     <AuthShell
       title="Welcome back"
       subtitle="Sign in to pick up where you left off."
-      footer={
-        <>
-          New here?{" "}
-          <Link href="/signup" className="font-semibold text-fire hover:underline">
-            Create an account
-          </Link>
-        </>
-      }
+      footer="Internal tool. Ask the owner for an account."
     >
       <form onSubmit={handleLogin} className="space-y-5">
         <AuthField id="email" label="Email address">
