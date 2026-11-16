@@ -1,27 +1,32 @@
 import type { Metadata } from "next";
-import { Inter, Bricolage_Grotesque, Fraunces } from "next/font/google";
+import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import "./globals.css";
 import AuthHashHandler from "./AuthHashHandler";
 import { BRAND } from "@/lib/brand";
 import { appUrl } from "@/lib/app-url";
 
-const inter = Inter({
-  subsets: ["latin"],
+// Self-hosted (app/fonts, the latin subsets Google Fonts serves) rather
+// than next/font/google, which downloads them during every build: when
+// Google's response failed to parse, production builds failed with it.
+const inter = localFont({
+  src: "./fonts/inter-latin.woff2",
+  weight: "100 900",
   variable: "--font-inter",
 });
 
-const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
+const bricolage = localFont({
+  src: "./fonts/bricolage-grotesque-latin.woff2",
+  weight: "400 800",
   variable: "--font-bricolage",
-  weight: ["400", "500", "600", "700", "800"],
 });
 
-const fraunces = Fraunces({
-  subsets: ["latin"],
+const fraunces = localFont({
+  src: [
+    { path: "./fonts/fraunces-latin.woff2", weight: "300 500", style: "normal" },
+    { path: "./fonts/fraunces-latin-italic.woff2", weight: "300 500", style: "italic" },
+  ],
   variable: "--font-fraunces",
-  weight: ["300", "400", "500"],
-  style: ["italic", "normal"],
 });
 
 const SITE_URL = appUrl();
