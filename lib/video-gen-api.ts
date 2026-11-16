@@ -30,7 +30,7 @@
  * handlers), since it resolves the request's OpenRouter key and uses Buffer.
  */
 import { requireOpenRouterKey } from "@/lib/openrouter-key";
-import { videoModelSpec } from "@/lib/video-gen";
+import { videoModelSpec, videoModelResolutions } from "@/lib/video-gen";
 import type { VideoAspectRatio, VideoResolution, VideoJobState, VideoCharacterRef } from "@/lib/video-gen";
 import { appUrl } from "@/lib/app-url";
 
@@ -101,6 +101,9 @@ export async function submitVideoJob(params: SubmitVideoJobParams): Promise<Vide
   }
   if (spec && (params.duration < spec.minDuration || params.duration > spec.maxDuration)) {
     throw new Error(`${spec.label} supports ${spec.minDuration}-${spec.maxDuration} second clips; got ${params.duration}.`);
+  }
+  if (spec && !videoModelResolutions(spec).includes(params.resolution)) {
+    throw new Error(`${spec.label} supports ${videoModelResolutions(spec).join(", ")}; got ${params.resolution}.`);
   }
 
   // A first-frame model gets the picture itself, not a list of named

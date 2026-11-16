@@ -681,7 +681,7 @@ export const VIDEO_MCP_TOOLS = [
           minimum: 1,
           maximum: 15,
           default: 5,
-          description: "Seconds. bytedance/seedance-2.0-fast takes 4-15; the x-ai/grok-imagine-video models take 1-15.",
+          description: "Seconds. bytedance/seedance-2.0-fast takes 4-15; the x-ai/grok-imagine-video models take 1-15; google/gemini-omni-1.2-flash takes 3-15.",
         },
         generate_audio: { type: "boolean", default: true },
         provider: { type: "string", enum: ["openrouter"], default: "openrouter" },
@@ -691,7 +691,8 @@ export const VIDEO_MCP_TOOLS = [
             "Optional model; defaults to bytedance/seedance-2.0-fast. Known models: " +
             "bytedance/seedance-2.0-fast (up to 12 reference images), " +
             "x-ai/grok-imagine-video-1.5 (up to 7 reference images), " +
-            "x-ai/grok-imagine-video-1.5-lite (cheaper and faster; at most ONE image, which becomes the video's first frame rather than a style or character reference - describe everything else in the prompt).",
+            "x-ai/grok-imagine-video-1.5-lite (cheaper and faster; at most ONE image, which becomes the video's first frame rather than a style or character reference - describe everything else in the prompt), " +
+            "google/gemini-omni-1.2-flash (Google's video model; 720p only, 3-15 seconds, up to 3 reference images).",
         },
         idempotency_key: {
           type: "string",

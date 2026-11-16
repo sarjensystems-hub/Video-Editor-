@@ -45,6 +45,9 @@ export interface VideoModelSpec {
   imageInput:  VideoImageInput;
   /** Most images one request may carry. */
   maxImages:   number;
+  /** Resolutions the model accepts, when it does not take all of
+   *  VIDEO_RESOLUTIONS (Gemini Omni has no 480p). Omitted = all. */
+  resolutions?: readonly VideoResolution[];
 }
 
 export const VIDEO_MODELS = [
@@ -72,9 +75,24 @@ export const VIDEO_MODELS = [
     imageInput: "first_frame",
     maxImages: 1,
   },
+  {
+    // OpenRouter lists 3-15s and 360p/720p/1080p/4K, no 480p.
+    id: "google/gemini-omni-1.2-flash",
+    label: "Gemini Omni 1.2 Flash",
+    minDuration: 3,
+    maxDuration: 15,
+    imageInput: "references",
+    maxImages: 3,
+    resolutions: ["720p"],
+  },
 ] as const satisfies readonly VideoModelSpec[];
 
 export const VIDEO_MODEL_IDS = VIDEO_MODELS.map((m) => m.id);
+
+/** Resolutions a model accepts; an unknown model may use any of them. */
+export function videoModelResolutions(spec: VideoModelSpec | undefined): readonly VideoResolution[] {
+  return spec?.resolutions ?? VIDEO_RESOLUTIONS;
+}
 
 /** The catalog entry for a model id, or undefined for an id we don't know
  *  (still sent as-is, with Seedance-style references). */

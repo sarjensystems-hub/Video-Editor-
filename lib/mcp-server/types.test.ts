@@ -80,4 +80,16 @@ describe("parseGenerateVideoRequest", () => {
       references: [{ url: "https://example.com/a.jpg", role: "first_frame" }],
     }).references).toHaveLength(1);
   });
+
+  it("applies Gemini Omni 1.2 Flash limits", () => {
+    const omni = { prompt: "Clip", model: "google/gemini-omni-1.2-flash" };
+    expect(parseGenerateVideoRequest({ ...omni, idempotency_key: "omni-1", duration: 3 }).duration).toBe(3);
+    expect(() => parseGenerateVideoRequest({ ...omni, idempotency_key: "omni-2", duration: 2 })).toThrow(/from 3 to 15/);
+    expect(() => parseGenerateVideoRequest({ ...omni, idempotency_key: "omni-3", resolution: "480p" })).toThrow(/720p/);
+    expect(() => parseGenerateVideoRequest({
+      ...omni,
+      idempotency_key: "omni-4",
+      references: [1, 2, 3, 4].map((i) => ({ url: `https://example.com/${i}.jpg` })),
+    })).toThrow(/at most 3/);
+  });
 });

@@ -5,6 +5,7 @@ import {
   VIDEO_MIN_DURATION,
   VIDEO_RESOLUTIONS,
   videoModelSpec,
+  videoModelResolutions,
 } from "../video-gen";
 import type { VideoAspectRatio, VideoJobState, VideoResolution } from "../video-gen";
 
@@ -131,6 +132,11 @@ export function parseGenerateVideoRequest(input: unknown): GenerateVideoRequest 
   const minDuration = spec?.minDuration ?? VIDEO_MIN_DURATION;
   const maxDuration = spec?.maxDuration ?? VIDEO_MAX_DURATION;
   const maxImages = spec?.maxImages ?? MAX_VIDEO_CHARACTERS;
+  if (spec && !videoModelResolutions(spec).includes(resolution)) {
+    throw new VideoValidationError(
+      `resolution must be ${videoModelResolutions(spec).join(" or ")} for ${spec.id}.`,
+    );
+  }
   const durationRaw = r.duration ?? r.duration_seconds ?? 5;
   if (
     typeof durationRaw !== "number" ||

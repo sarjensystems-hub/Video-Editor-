@@ -31,6 +31,7 @@ import {
   MAX_VIDEO_CHARACTERS,
   VIDEO_MODEL_IDS,
   videoModelSpec,
+  videoModelResolutions,
   type VideoAspectRatio,
   type VideoResolution,
   type VideoCharacterRef,
@@ -78,6 +79,12 @@ async function handlePOST(request: Request) {
   const minDuration = spec?.minDuration ?? VIDEO_MIN_DURATION;
   const maxDuration = spec?.maxDuration ?? VIDEO_MAX_DURATION;
   const maxImages = spec?.maxImages ?? MAX_VIDEO_CHARACTERS;
+  if (spec && !videoModelResolutions(spec).includes(resolution as VideoResolution)) {
+    return NextResponse.json(
+      { error: `${spec.label} supports ${videoModelResolutions(spec).join(", ")}` },
+      { status: 400 },
+    );
+  }
 
   const duration = Number((body as Record<string, unknown>).duration);
   if (!Number.isInteger(duration) || duration < minDuration || duration > maxDuration) {
