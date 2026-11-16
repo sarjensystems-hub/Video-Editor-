@@ -18,73 +18,67 @@ const ASPECT_RATIOS: Record<CanvasFmt, string> = {
   portrait:  "3:4",
 };
 
-/* OpenAI-style content-part array used for vision / multi-image requests. */
-type ContentPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
-
 interface CallOpts {
-  /** A plain string OR an OpenAI content-part array. */
-  content:     string | ContentPart[];
-  aspectRatio: string;
-  logTag:      string;
-  model?:      string;
+  prompt:          string;
+  /** HTTP(S) or data: URLs, sent as input_references. */
+  referenceImages: string[];
+  aspectRatio:     string;
+  logTag:          string;
+  model?:          string;
 }
 
-async function callImageModel({ content, aspectRatio, logTag, model = IMAGE_MODEL }: CallOpts): Promise<AIImageResult> {
+/**
+ * OpenRouter serves image-only models (GPT Image) from its Images API,
+ * POST /api/v1/images; chat/completions now answers them with a 404. The
+ * response carries the image bytes as base64 in data[].b64_json.
+ *
+ * Failures throw with OpenRouter's own message, so a caller sees why (a
+ * refused model, a missing key, a content block) rather than "no image".
+ */
+async function callImageModel({ prompt, referenceImages, aspectRatio, logTag, model = IMAGE_MODEL }: CallOpts): Promise<AIImageResult> {
   const apiKey = await getOpenRouterKey();
   if (!apiKey) {
-    console.warn(`[${logTag}] No OpenRouter key for this request — the account has not added one`);
-    return null;
+    throw new Error("Image generation needs an OpenRouter key: add one in Settings.");
   }
 
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-        "HTTP-Referer":  appUrl(),
-        "X-Title":       "Studio",
-      },
-      body: JSON.stringify({
-        model,
-        messages:   [{ role: "user", content }],
-        // GPT Image outputs images only; asking for text too is rejected.
-        modalities:   ["image"],
-        image_config: { aspect_ratio: aspectRatio },
-      }),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error(`[${logTag}] OpenRouter ${res.status}:`, text.slice(0, 600));
-      return null;
-    }
-
-    const data    = await res.json();
-    const message = data?.choices?.[0]?.message;
-    const first   = message?.images?.[0];
-    const imgUrl  = first?.image_url?.url ?? first?.url;
-
-    if (typeof imgUrl === "string") {
-      if (imgUrl.startsWith("data:")) {
-        const b64 = imgUrl.split(",")[1];
-        if (b64) return { b64 };
-      }
-      if (imgUrl.startsWith("http")) return { url: imgUrl };
-    }
-    if (typeof message?.content === "string" && message.content.startsWith("data:")) {
-      const b64 = message.content.split(",")[1];
-      if (b64) return { b64 };
-    }
-
-    console.error(`[${logTag}] No image in response:`, JSON.stringify(data).slice(0, 600));
-    return null;
-  } catch (e) {
-    console.error(`[${logTag}] Exception:`, e);
-    return null;
+  const body: Record<string, unknown> = {
+    model,
+    prompt,
+    aspect_ratio: aspectRatio,
+    n:            1,
+  };
+  if (referenceImages.length > 0) {
+    body.input_references = referenceImages.map((url) => ({ type: "image_url", image_url: { url } }));
   }
+
+  const res = await fetch("https://openrouter.ai/api/v1/images", {
+    method: "POST",
+    headers: {
+      "Content-Type":  "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+      "HTTP-Referer":  appUrl(),
+      "X-Title":       "Studio",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error(`[${logTag}] OpenRouter ${res.status}:`, text.slice(0, 600));
+    let message = text.slice(0, 300);
+    try {
+      message = JSON.parse(text)?.error?.message ?? message;
+    } catch { /* not JSON: keep the raw text */ }
+    throw new Error(`Image generation failed (OpenRouter ${res.status}): ${message || res.statusText}`);
+  }
+
+  const data = await res.json();
+  const first = data?.data?.[0];
+  if (typeof first?.b64_json === "string" && first.b64_json) return { b64: first.b64_json };
+  if (typeof first?.url === "string" && first.url.startsWith("http")) return { url: first.url };
+
+  console.error(`[${logTag}] No image in response:`, JSON.stringify(data).slice(0, 600));
+  throw new Error("Image generation failed: OpenRouter answered without an image.");
 }
 
 /**
@@ -98,15 +92,9 @@ export async function generateSocialImage(
 ): Promise<AIImageResult> {
   if (!prompt) return null;
 
-  const content: string | ContentPart[] = refImages.length
-    ? [
-        ...refImages.map((url) => ({ type: "image_url" as const, image_url: { url } })),
-        { type: "text" as const, text: prompt },
-      ]
-    : prompt;
-
   return callImageModel({
-    content,
+    prompt,
+    referenceImages: refImages,
     aspectRatio: ASPECT_RATIOS[canvasFormat],
     logTag:      "image-gen",
   });
