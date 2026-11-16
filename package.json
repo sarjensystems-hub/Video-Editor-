@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "vitest run && tsc --noEmit",
+    "prebuild": "node scripts/prebuild-checks.mjs",
     "build": "next build",
     "postbuild": "node scripts/create-creative-render-snapshot.mjs",
     "start": "next start",

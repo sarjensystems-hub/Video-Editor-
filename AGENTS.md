@@ -2,10 +2,15 @@
 
 ## Before you push
 
-- `npm test` and `npx tsc --noEmit` both have to pass. `npm run build` runs
-  them for you via `prebuild`, so a green build means both are green.
+- `npm test` and `npx tsc --noEmit` both have to pass. A local `npm run build`
+  runs them for you via `prebuild`, so a green build means both are green.
 - A push to `main` deploys straight to production. There is no staging gate, so
-  verify locally first.
+  verify locally first. Vercel no longer runs the tests (GitHub Actions does,
+  after the push) and only `next build`'s own type check stands between a push
+  and production.
+- Work on `main`. Vercel builds only `main`, and skips pushes that touch only
+  `render-worker/`, `supabase/`, docs, tests or `.github/`
+  (`scripts/vercel-ignore-build.sh`), to save the Hobby plan's build minutes.
 
 ## Vercel billing safety
 
