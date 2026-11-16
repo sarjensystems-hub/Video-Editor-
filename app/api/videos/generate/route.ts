@@ -11,7 +11,7 @@
  *                                 // auto-generated character-name legend
  *                                 // only in the outbound OpenRouter call
  *   aspectRatio: "16:9" | "9:16",
- *   resolution: "720p" | "480p",
+ *   resolution: "720p" | "480p" | "360p" | "1080p", // per model, see VIDEO_MODELS
  *   duration: number,             // 4-15 seconds
  *   characters: { name: string, url: string }[],  // up to 12, upload order preserved
  *   generateAudio: boolean,       // dialogue/music/sound alongside the video
@@ -79,9 +79,9 @@ async function handlePOST(request: Request) {
   const minDuration = spec?.minDuration ?? VIDEO_MIN_DURATION;
   const maxDuration = spec?.maxDuration ?? VIDEO_MAX_DURATION;
   const maxImages = spec?.maxImages ?? MAX_VIDEO_CHARACTERS;
-  if (spec && !videoModelResolutions(spec).includes(resolution as VideoResolution)) {
+  if (!videoModelResolutions(spec).includes(resolution as VideoResolution)) {
     return NextResponse.json(
-      { error: `${spec.label} supports ${videoModelResolutions(spec).join(", ")}` },
+      { error: `${spec?.label ?? "This model"} supports ${videoModelResolutions(spec).join(", ")}` },
       { status: 400 },
     );
   }

@@ -85,11 +85,38 @@ describe("parseGenerateVideoRequest", () => {
     const omni = { prompt: "Clip", model: "google/gemini-omni-1.2-flash" };
     expect(parseGenerateVideoRequest({ ...omni, idempotency_key: "omni-1", duration: 3 }).duration).toBe(3);
     expect(() => parseGenerateVideoRequest({ ...omni, idempotency_key: "omni-2", duration: 2 })).toThrow(/from 3 to 15/);
-    expect(() => parseGenerateVideoRequest({ ...omni, idempotency_key: "omni-3", resolution: "480p" })).toThrow(/720p/);
+    expect(() => parseGenerateVideoRequest({ ...omni, idempotency_key: "omni-3", resolution: "480p" })).toThrow(/360p or 720p or 1080p/);
+    for (const resolution of ["360p", "720p", "1080p"]) {
+      expect(parseGenerateVideoRequest({ ...omni, idempotency_key: `omni-${resolution}`, resolution }).resolution).toBe(resolution);
+    }
+    expect(() => parseGenerateVideoRequest({ prompt: "x", idempotency_key: "seed-1080", resolution: "1080p" })).toThrow(/720p or 480p/);
+    expect(parseGenerateVideoRequest({
+      prompt: "x", idempotency_key: "grok-1080", model: "x-ai/grok-imagine-video-1.5", resolution: "1080p",
+    }).resolution).toBe("1080p");
     expect(() => parseGenerateVideoRequest({
       ...omni,
       idempotency_key: "omni-4",
       references: [1, 2, 3, 4].map((i) => ({ url: `https://example.com/${i}.jpg` })),
     })).toThrow(/at most 3/);
+  });
+
+  it("lets Gemini Omni pin a first and last frame on top of 3 references", () => {
+    const refs = [
+      { url: "https://example.com/start.jpg", role: "first_frame" },
+      { url: "https://example.com/1.jpg" },
+      { url: "https://example.com/2.jpg" },
+      { url: "https://example.com/3.jpg" },
+      { url: "https://example.com/end.jpg", role: "last_frame" },
+    ];
+    const omni = { prompt: "x", model: "google/gemini-omni-1.2-flash" };
+    expect(parseGenerateVideoRequest({ ...omni, idempotency_key: "f1", references: refs }).references).toHaveLength(5);
+    expect(() => parseGenerateVideoRequest({
+      ...omni,
+      idempotency_key: "f2",
+      references: [refs[4], { url: "https://example.com/end2.jpg", role: "last_frame" }],
+    })).toThrow(/at most one last_frame/);
+    expect(() => parseGenerateVideoRequest({
+      prompt: "x", idempotency_key: "f3", references: [refs[4]],
+    })).toThrow(/cannot pin a last frame/);
   });
 });

@@ -64,6 +64,7 @@ export function createOpenRouterVideoProvider(api: OpenRouterApi = DEFAULT_API):
         characters: request.references.map((reference, index) => ({
           name: referenceName(reference, index),
           url: reference.url,
+          ...(reference.role === "first_frame" || reference.role === "last_frame" ? { frame: reference.role } : {}),
         })),
         generateAudio: request.generateAudio,
         model: this.resolveModel(request),

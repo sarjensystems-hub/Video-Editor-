@@ -12,7 +12,7 @@ import type { VideoAspectRatio, VideoJobState, VideoResolution } from "../video-
 export const VIDEO_MODES = ["cinematic", "automotive_broll", "image_to_video", "avatar"] as const;
 export type VideoMode = (typeof VIDEO_MODES)[number];
 
-export const VIDEO_REFERENCE_ROLES = ["vehicle", "person", "product", "brand", "first_frame", "style"] as const;
+export const VIDEO_REFERENCE_ROLES = ["vehicle", "person", "product", "brand", "first_frame", "last_frame", "style"] as const;
 export type VideoReferenceRole = (typeof VIDEO_REFERENCE_ROLES)[number];
 
 export type VideoProviderName = "openrouter";
@@ -132,9 +132,9 @@ export function parseGenerateVideoRequest(input: unknown): GenerateVideoRequest 
   const minDuration = spec?.minDuration ?? VIDEO_MIN_DURATION;
   const maxDuration = spec?.maxDuration ?? VIDEO_MAX_DURATION;
   const maxImages = spec?.maxImages ?? MAX_VIDEO_CHARACTERS;
-  if (spec && !videoModelResolutions(spec).includes(resolution)) {
+  if (!videoModelResolutions(spec).includes(resolution)) {
     throw new VideoValidationError(
-      `resolution must be ${videoModelResolutions(spec).join(" or ")} for ${spec.id}.`,
+      `resolution must be ${videoModelResolutions(spec).join(" or ")} for ${spec?.id ?? model ?? "the default model"}.`,
     );
   }
   const durationRaw = r.duration ?? r.duration_seconds ?? 5;
@@ -156,14 +156,27 @@ export function parseGenerateVideoRequest(input: unknown): GenerateVideoRequest 
 
   const refsRaw = r.references ?? [];
   if (!Array.isArray(refsRaw)) throw new VideoValidationError("references must be an array.");
-  if (refsRaw.length > maxImages) {
+  const references = refsRaw.map(parseReference);
+  // Images a model pins as its first/last frame do not count as references.
+  const frameTypes: readonly string[] = spec?.imageInput === "references" ? spec.frameImages ?? [] : [];
+  const pinned = references.filter((ref) => ref.role && frameTypes.includes(ref.role));
+  for (const type of frameTypes) {
+    if (pinned.filter((ref) => ref.role === type).length > 1) {
+      throw new VideoValidationError(`Pass at most one ${type} reference for ${spec!.id}.`);
+    }
+  }
+  if (references.some((ref) => ref.role === "last_frame") && !frameTypes.includes("last_frame")) {
+    throw new VideoValidationError(
+      `${spec?.id ?? model ?? "The default model"} cannot pin a last frame; only models that take frame images (google/gemini-omni-1.2-flash) accept role last_frame.`,
+    );
+  }
+  if (references.length - pinned.length > maxImages) {
     throw new VideoValidationError(
       spec?.imageInput === "first_frame"
         ? `${spec.id} takes a single image, used as the video's first frame; pass at most one reference.`
         : `references supports at most ${maxImages} images${spec ? ` for ${spec.id}` : ""}.`,
     );
   }
-  const references = refsRaw.map(parseReference);
 
   return {
     prompt,

@@ -92,24 +92,35 @@ export async function submitVideoJob(params: SubmitVideoJobParams): Promise<Vide
   const model = params.model?.trim() || DEFAULT_VIDEO_MODEL;
   const spec = videoModelSpec(model);
 
-  if (spec && params.characters.length > spec.maxImages) {
+  // On a model that takes frames alongside references, images tagged
+  // first_frame/last_frame pin the clip's ends; the rest stay references.
+  const frameTypes = spec?.imageInput === "references" ? spec.frameImages ?? [] : [];
+  const frames = params.characters.filter((c) => c.frame && frameTypes.includes(c.frame));
+  const references = params.characters.filter((c) => !frames.includes(c));
+  for (const type of frameTypes) {
+    if (frames.filter((c) => c.frame === type).length > 1) {
+      throw new Error(`${spec!.label} takes one ${type} image; got ${frames.filter((c) => c.frame === type).length}.`);
+    }
+  }
+
+  if (spec && references.length > spec.maxImages) {
     throw new Error(
       spec.imageInput === "first_frame"
         ? `${spec.label} takes a single image, used as the first frame; got ${params.characters.length}.`
-        : `${spec.label} takes at most ${spec.maxImages} reference images; got ${params.characters.length}.`,
+        : `${spec.label} takes at most ${spec.maxImages} reference images; got ${references.length}.`,
     );
   }
   if (spec && (params.duration < spec.minDuration || params.duration > spec.maxDuration)) {
     throw new Error(`${spec.label} supports ${spec.minDuration}-${spec.maxDuration} second clips; got ${params.duration}.`);
   }
-  if (spec && !videoModelResolutions(spec).includes(params.resolution)) {
-    throw new Error(`${spec.label} supports ${videoModelResolutions(spec).join(", ")}; got ${params.resolution}.`);
+  if (!videoModelResolutions(spec).includes(params.resolution)) {
+    throw new Error(`${spec?.label ?? model} supports ${videoModelResolutions(spec).join(", ")}; got ${params.resolution}.`);
   }
 
   // A first-frame model gets the picture itself, not a list of named
   // references, so the legend would only describe images it never sees.
   const firstFrame = spec?.imageInput === "first_frame";
-  const legend = firstFrame ? "" : buildCharacterLegend(params.characters, params.referenceInstruction);
+  const legend = firstFrame ? "" : buildCharacterLegend(references, params.referenceInstruction);
   const prompt = legend ? `${legend}\n\n${params.prompt}` : params.prompt;
 
   const body: Record<string, unknown> = {
@@ -130,10 +141,19 @@ export async function submitVideoJob(params: SubmitVideoJobParams): Promise<Vide
         frame_type: "first_frame",
       }];
     } else {
-      body.input_references = params.characters.map((c) => ({
-        type: "image_url",
-        image_url: { url: c.url },
-      }));
+      if (references.length > 0) {
+        body.input_references = references.map((c) => ({
+          type: "image_url",
+          image_url: { url: c.url },
+        }));
+      }
+      if (frames.length > 0) {
+        body.frame_images = frames.map((c) => ({
+          type: "image_url",
+          image_url: { url: c.url },
+          frame_type: c.frame,
+        }));
+      }
     }
   }
 

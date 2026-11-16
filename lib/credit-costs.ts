@@ -34,7 +34,7 @@ export const CREDIT_COSTS: Record<CreditAction, number> = {
 
 export function videoGenerationCost(
   _durationSeconds?: number,
-  _resolution?: "480p" | "720p",
+  _resolution?: string,
 ): number {
   return 0;
 }

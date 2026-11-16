@@ -16,7 +16,7 @@
 export const VIDEO_ASPECT_RATIOS = ["16:9", "9:16"] as const;
 export type VideoAspectRatio = (typeof VIDEO_ASPECT_RATIOS)[number];
 
-export const VIDEO_RESOLUTIONS = ["720p", "480p"] as const;
+export const VIDEO_RESOLUTIONS = ["720p", "480p", "360p", "1080p"] as const;
 export type VideoResolution = (typeof VIDEO_RESOLUTIONS)[number];
 
 /** Seedance 2.0 Fast's own supported_durations is 4-15s (confirmed via the
@@ -37,6 +37,10 @@ export const MAX_VIDEO_CHARACTERS = 12;
  */
 export type VideoImageInput = "references" | "first_frame";
 
+/** Frames a model can be pinned to, sent as OpenRouter `frame_images`. */
+export const VIDEO_FRAME_TYPES = ["first_frame", "last_frame"] as const;
+export type VideoFrameType = (typeof VIDEO_FRAME_TYPES)[number];
+
 export interface VideoModelSpec {
   id:          string;
   label:       string;
@@ -45,9 +49,12 @@ export interface VideoModelSpec {
   imageInput:  VideoImageInput;
   /** Most images one request may carry. */
   maxImages:   number;
-  /** Resolutions the model accepts, when it does not take all of
-   *  VIDEO_RESOLUTIONS (Gemini Omni has no 480p). Omitted = all. */
-  resolutions?: readonly VideoResolution[];
+  /** Resolutions the model accepts, as OpenRouter's video models endpoint
+   *  lists them (narrowed to VIDEO_RESOLUTIONS). */
+  resolutions: readonly VideoResolution[];
+  /** For a "references" model: frames it also takes alongside the references.
+   *  An image tagged with one of these goes to `frame_images`, not the list. */
+  frameImages?: readonly VideoFrameType[];
 }
 
 export const VIDEO_MODELS = [
@@ -58,6 +65,7 @@ export const VIDEO_MODELS = [
     maxDuration: VIDEO_MAX_DURATION,
     imageInput: "references",
     maxImages: MAX_VIDEO_CHARACTERS,
+    resolutions: ["480p", "720p"],
   },
   {
     id: "x-ai/grok-imagine-video-1.5",
@@ -66,6 +74,7 @@ export const VIDEO_MODELS = [
     maxDuration: 15,
     imageInput: "references",
     maxImages: 7,
+    resolutions: ["480p", "720p", "1080p"],
   },
   {
     id: "x-ai/grok-imagine-video-1.5-lite",
@@ -74,24 +83,27 @@ export const VIDEO_MODELS = [
     maxDuration: 15,
     imageInput: "first_frame",
     maxImages: 1,
+    resolutions: ["480p", "720p", "1080p"],
   },
   {
-    // OpenRouter lists 3-15s and 360p/720p/1080p/4K, no 480p.
+    // OpenRouter lists 3-15s and 360p/720p/1080p/4K, no 480p (4K not offered here).
     id: "google/gemini-omni-1.2-flash",
     label: "Gemini Omni 1.2 Flash",
     minDuration: 3,
     maxDuration: 15,
     imageInput: "references",
     maxImages: 3,
-    resolutions: ["720p"],
+    resolutions: ["360p", "720p", "1080p"],
+    frameImages: ["first_frame", "last_frame"],
   },
 ] as const satisfies readonly VideoModelSpec[];
 
 export const VIDEO_MODEL_IDS = VIDEO_MODELS.map((m) => m.id);
 
-/** Resolutions a model accepts; an unknown model may use any of them. */
+/** Resolutions a model accepts. An unknown model id is held to 480p/720p,
+ *  the two every model here has supported since before the list existed. */
 export function videoModelResolutions(spec: VideoModelSpec | undefined): readonly VideoResolution[] {
-  return spec?.resolutions ?? VIDEO_RESOLUTIONS;
+  return spec?.resolutions ?? ["720p", "480p"];
 }
 
 /** The catalog entry for a model id, or undefined for an id we don't know
@@ -107,6 +119,9 @@ export interface VideoCharacterRef {
   /** Turned into an auto-generated legend line at submit time — see module doc above. */
   name: string;
   url:  string;
+  /** Pin this image as the clip's first or last frame instead of a named
+   *  reference, on a model whose spec lists that frame in frameImages. */
+  frame?: VideoFrameType;
 }
 
 /** Shape of a `video_generations` row (supabase/add_video_generations.sql). */

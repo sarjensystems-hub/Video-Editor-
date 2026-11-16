@@ -113,4 +113,47 @@ describe("submitVideoJob", () => {
     await expect(submitVideoJob({ ...base, callbackUrl: "https://app.example.com/cb?token=t" })).rejects.toThrow(/400/);
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it("pins Gemini Omni first/last frames as frame_images and keeps the rest as references", async () => {
+    const body = captureBody();
+    await submitVideoJob({
+      ...base,
+      model: "google/gemini-omni-1.2-flash",
+      resolution: "1080p",
+      characters: [
+        { name: "Opening", url: "https://example.com/start.jpg", frame: "first_frame" },
+        { name: "Hero", url: "https://example.com/hero.jpg" },
+        { name: "Closing", url: "https://example.com/end.jpg", frame: "last_frame" },
+      ],
+    });
+    const sent = body();
+    expect(sent.resolution).toBe("1080p");
+    expect(sent.input_references).toEqual([{ type: "image_url", image_url: { url: "https://example.com/hero.jpg" } }]);
+    expect(sent.frame_images).toEqual([
+      { type: "image_url", image_url: { url: "https://example.com/start.jpg" }, frame_type: "first_frame" },
+      { type: "image_url", image_url: { url: "https://example.com/end.jpg" }, frame_type: "last_frame" },
+    ]);
+    expect(sent.prompt).toMatch(/^Reference image 1 is Hero\./);
+  });
+
+  it("sends only frame_images when Gemini Omni gets frames and no references", async () => {
+    const body = captureBody();
+    await submitVideoJob({
+      ...base,
+      model: "google/gemini-omni-1.2-flash",
+      characters: [{ name: "Opening", url: "https://example.com/start.jpg", frame: "first_frame" }],
+    });
+    const sent = body();
+    expect(sent.input_references).toBeUndefined();
+    expect(sent.frame_images).toHaveLength(1);
+    expect(sent.prompt).toBe(base.prompt);
+  });
+
+  it("refuses resolutions a model does not offer before spending anything", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(submitVideoJob({ ...base, model: "google/gemini-omni-1.2-flash", resolution: "480p" })).rejects.toThrow(/360p, 720p, 1080p/);
+    await expect(submitVideoJob({ ...base, resolution: "1080p" })).rejects.toThrow(/480p, 720p/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

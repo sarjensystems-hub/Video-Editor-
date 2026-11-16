@@ -668,14 +668,22 @@ export const VIDEO_MCP_TOOLS = [
               label: { type: "string" },
               role: {
                 type: "string",
-                enum: ["vehicle", "person", "product", "brand", "first_frame", "style"],
+                enum: ["vehicle", "person", "product", "brand", "first_frame", "last_frame", "style"],
+                description:
+                  "On google/gemini-omni-1.2-flash, first_frame and last_frame pin the clip's opening and closing frame (one each, not counted against the 3 references). On other models first_frame is a named reference and last_frame is refused.",
               },
             },
             required: ["url"],
           },
         },
         aspect_ratio: { type: "string", enum: ["16:9", "9:16"], default: "9:16" },
-        resolution: { type: "string", enum: ["720p", "480p"], default: "720p" },
+        resolution: {
+          type: "string",
+          enum: ["720p", "480p", "360p", "1080p"],
+          default: "720p",
+          description:
+            "Depends on the model: bytedance/seedance-2.0-fast takes 480p or 720p; the x-ai/grok-imagine-video models take 480p, 720p or 1080p; google/gemini-omni-1.2-flash takes 360p, 720p or 1080p (no 480p).",
+        },
         duration: {
           type: "integer",
           minimum: 1,
@@ -692,7 +700,7 @@ export const VIDEO_MCP_TOOLS = [
             "bytedance/seedance-2.0-fast (up to 12 reference images), " +
             "x-ai/grok-imagine-video-1.5 (up to 7 reference images), " +
             "x-ai/grok-imagine-video-1.5-lite (cheaper and faster; at most ONE image, which becomes the video's first frame rather than a style or character reference - describe everything else in the prompt), " +
-            "google/gemini-omni-1.2-flash (Google's video model; 720p only, 3-15 seconds, up to 3 reference images).",
+            "google/gemini-omni-1.2-flash (Google's video model; 360p, 720p or 1080p, 3-15 seconds, up to 3 reference images plus an optional first_frame and last_frame image).",
         },
         idempotency_key: {
           type: "string",
