@@ -23,6 +23,7 @@ describe("/media links", () => {
     expect(html).toContain(`<video src="/media/${PATH.join("/")}?raw=1"`);
     expect(html).toContain(`/media/${PATH.join("/")}?download=film.mp4`);
     expect(html).not.toContain("X-Amz-Signature");
+    expect(res.headers.get("cache-control")).toMatch(/^private/);
   });
 
   it("still redirects the player, the renderer and downloads to signed storage", async () => {
@@ -35,6 +36,7 @@ describe("/media links", () => {
       const res = await get(query, headers);
       expect(res.status).toBe(307);
       expect(res.headers.get("location")).toContain("X-Amz-Signature");
+      expect(res.headers.get("cache-control")).toMatch(/^private/);
     }
   });
 

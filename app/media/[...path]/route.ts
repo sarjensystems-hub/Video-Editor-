@@ -88,7 +88,10 @@ function videoPage(segments: string[]): Response {
     status: 200,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, max-age=300",
+      // private: Vercel's CDN ignores Vary here, and a cached page served to
+      // a <video> request (or a cached redirect served to a tab) breaks both.
+      "Cache-Control": "private, max-age=300",
+      Vary: "Sec-Fetch-Dest, Accept",
       "X-Robots-Tag": "noindex, nofollow",
     },
   });
@@ -124,7 +127,7 @@ async function redirectToFile(request: Request, params: Promise<{ path: string[]
     status: 307,
     headers: {
       Location: url,
-      "Cache-Control": `public, max-age=${REDIRECT_CACHE_SECONDS}`,
+      "Cache-Control": `private, max-age=${REDIRECT_CACHE_SECONDS}`,
       // The same link answers a page or a redirect depending on who asks.
       Vary: "Sec-Fetch-Dest, Accept",
     },
