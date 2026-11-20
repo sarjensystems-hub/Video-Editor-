@@ -58,7 +58,8 @@ describe("/files links", () => {
     vi.stubGlobal("fetch", headFetch);
     const head = await call("HEAD");
     expect(head.status).toBe(200);
-    expect(head.headers.get("content-length")).toBe("75063631");
+    expect(head.headers.get("content-length")).toBeNull();
+    expect(head.headers.get("x-file-size")).toBe("75063631");
     expect(head.headers.get("content-range")).toBeNull();
     expect((headFetch.mock.calls[0] as unknown as [string, RequestInit])[1]).toEqual({ method: "GET", headers: { Range: "bytes=0-0" } });
 

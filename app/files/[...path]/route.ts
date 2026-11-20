@@ -55,11 +55,18 @@ async function serveFile(request: Request, params: Promise<{ path: string[] }>):
   if (!out.has("accept-ranges")) out.set("accept-ranges", "bytes");
 
   let status = upstream.status;
-  if (isHead && !range) {
+  if (isHead) {
+    // Vercel's response layer waits for as many body bytes as Content-Length
+    // promises, so a HEAD that declares the real size never finishes. It
+    // reports the size in X-File-Size instead,
+    // and the GET that follows carries the real Content-Length.
     const total = upstream.headers.get("content-range")?.match(/\/(\d+)$/)?.[1];
-    if (total) out.set("content-length", total);
-    out.delete("content-range");
-    status = 200;
+    out.delete("content-length");
+    if (!range) {
+      out.delete("content-range");
+      if (total) out.set("x-file-size", total);
+      status = 200;
+    }
   }
   out.set("content-disposition", `inline; filename="${segments[segments.length - 1]}"`);
   out.set("cache-control", "private, max-age=3600");
