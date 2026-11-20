@@ -51,10 +51,16 @@ describe("/files links", () => {
   });
 
   it("answers HEAD with headers only, and 404 for a missing or malformed file", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 200, headers: { "content-type": "video/mp4", "content-length": "5" } })));
+    const headFetch = vi.fn(async () => new Response("V", {
+      status: 206,
+      headers: { "content-type": "video/mp4", "content-length": "1", "content-range": "bytes 0-0/75063631" },
+    }));
+    vi.stubGlobal("fetch", headFetch);
     const head = await call("HEAD");
     expect(head.status).toBe(200);
-    expect(head.headers.get("content-length")).toBe("5");
+    expect(head.headers.get("content-length")).toBe("75063631");
+    expect(head.headers.get("content-range")).toBeNull();
+    expect((headFetch.mock.calls[0] as unknown as [string, RequestInit])[1]).toEqual({ method: "GET", headers: { Range: "bytes=0-0" } });
 
     vi.stubGlobal("fetch", vi.fn(async () => new Response("<Error/>", { status: 403 })));
     expect((await call("GET")).status).toBe(404);

@@ -29,10 +29,14 @@ async function serveFile(request: Request, params: Promise<{ path: string[] }>):
   if (!segments) return new Response("Not found", { status: 404 });
 
   const signed = await presignGet(segments.join("/"), 15 * 60);
+  const isHead = request.method === "HEAD";
   const headers: Record<string, string> = {};
   const range = request.headers.get("range");
-  if (range) headers.Range = range;
-  const upstream = await fetch(signed, { method: request.method === "HEAD" ? "HEAD" : "GET", headers });
+  // The signed URL is for GET only, so HEAD asks for the first byte and reads
+  // the file's real size from Content-Range.
+  if (isHead && !range) headers.Range = "bytes=0-0";
+  else if (range) headers.Range = range;
+  const upstream = await fetch(signed, { method: "GET", headers });
 
   if (upstream.status === 404 || upstream.status === 403) {
     await upstream.body?.cancel();
@@ -49,11 +53,20 @@ async function serveFile(request: Request, params: Promise<{ path: string[] }>):
     if (value) out.set(name, value);
   }
   if (!out.has("accept-ranges")) out.set("accept-ranges", "bytes");
+
+  let status = upstream.status;
+  if (isHead && !range) {
+    const total = upstream.headers.get("content-range")?.match(/\/(\d+)$/)?.[1];
+    if (total) out.set("content-length", total);
+    out.delete("content-range");
+    status = 200;
+  }
   out.set("content-disposition", `inline; filename="${segments[segments.length - 1]}"`);
   out.set("cache-control", "private, max-age=3600");
   out.set("x-robots-tag", "noindex, nofollow");
 
-  return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers: out });
+  if (isHead) await upstream.body?.cancel();
+  return new Response(isHead ? null : upstream.body, { status, headers: out });
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
