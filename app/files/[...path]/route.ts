@@ -23,6 +23,15 @@ const PASSED_HEADERS = ["content-type", "content-length", "content-range", "acce
  * editor, the renderer, people) and hand this address only to services that
  * cannot. Range requests are passed on, so seeking and resumed downloads work.
  */
+/**
+ * Drop an upstream body we will not send on. Never awaited: on Vercel,
+ * awaiting cancel() on a fetch body can stay pending forever, and the
+ * request then never gets an answer.
+ */
+function discard(response: Response): void {
+  response.body?.cancel().catch(() => {});
+}
+
 async function serveFile(request: Request, params: Promise<{ path: string[] }>): Promise<Response> {
   const { path } = await params;
   const segments = storagePathFromSegments(path);
@@ -39,11 +48,11 @@ async function serveFile(request: Request, params: Promise<{ path: string[] }>):
   const upstream = await fetch(signed, { method: "GET", headers });
 
   if (upstream.status === 404 || upstream.status === 403) {
-    await upstream.body?.cancel();
+    discard(upstream);
     return new Response("Not found", { status: 404 });
   }
   if (!upstream.ok) {
-    await upstream.body?.cancel();
+    discard(upstream);
     return new Response("Storage is unavailable", { status: 502 });
   }
 
@@ -55,24 +64,18 @@ async function serveFile(request: Request, params: Promise<{ path: string[] }>):
   if (!out.has("accept-ranges")) out.set("accept-ranges", "bytes");
 
   let status = upstream.status;
-  if (isHead) {
-    // Vercel's response layer waits for as many body bytes as Content-Length
-    // promises, so a HEAD that declares the real size never finishes. It
-    // reports the size in X-File-Size instead,
-    // and the GET that follows carries the real Content-Length.
+  if (isHead && !range) {
     const total = upstream.headers.get("content-range")?.match(/\/(\d+)$/)?.[1];
-    out.delete("content-length");
-    if (!range) {
-      out.delete("content-range");
-      if (total) out.set("x-file-size", total);
-      status = 200;
-    }
+    if (total) out.set("content-length", total);
+    out.delete("content-range");
+    status = 200;
   }
+
   out.set("content-disposition", `inline; filename="${segments[segments.length - 1]}"`);
   out.set("cache-control", "private, max-age=3600");
   out.set("x-robots-tag", "noindex, nofollow");
 
-  if (isHead) await upstream.body?.cancel();
+  if (isHead) discard(upstream);
   return new Response(isHead ? null : upstream.body, { status, headers: out });
 }
 
