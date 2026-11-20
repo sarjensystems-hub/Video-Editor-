@@ -40,6 +40,11 @@ describe("/media links", () => {
     }
   });
 
+  it("gives server fetchers with browser-style Accept headers the redirect, not the page", async () => {
+    const res = await get("", { accept: "text/html,application/xhtml+xml,*/*;q=0.8" });
+    expect(res.status).toBe(307);
+  });
+
   it("does not turn images into a player page", async () => {
     const res = await get("", { "sec-fetch-dest": "document" }, [PATH[0], "images", "a.png"]);
     expect(res.status).toBe(307);

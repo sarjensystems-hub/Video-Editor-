@@ -1,4 +1,5 @@
 import type { McpUserContext } from "@/lib/mcp-oauth";
+import { directFileUrl } from "../media-path";
 import { runAfterResponse } from "./background";
 import { chargeCreativeRenderCredits, getCreditServiceClient, refundCreativeRenderCredits, withCredits, InsufficientCreditsError } from "./metering";
 import { CREDIT_COSTS, creativeFrameCost, creativeRenderCost } from "../credit-costs";
@@ -1355,6 +1356,8 @@ export async function handleCreativeMcpTool(
       ...data,
       estimated_completion_ms: typeof metadata.estimated_completion_ms === "number" ? metadata.estimated_completion_ms : null,
       output_asset_id: typeof metadata.output_asset_id === "string" ? metadata.output_asset_id : null,
+      // For services that fetch the file by URL and cannot follow a redirect.
+      publish_url: typeof data.output_url === "string" ? directFileUrl(data.output_url) : null,
     };
   }
 

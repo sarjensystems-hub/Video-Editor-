@@ -1,5 +1,6 @@
 import { presignGet } from "@/lib/b2";
 import { BRAND } from "@/lib/brand";
+import { storagePathFromSegments } from "@/lib/media-path";
 
 export const runtime = "nodejs";
 
@@ -37,9 +38,10 @@ const VIDEO_EXTENSION = /\.(mp4|webm|mov|m4v)$/i;
  * they keep getting the redirect.
  */
 function isBrowserPageVisit(request: Request): boolean {
-  const dest = request.headers.get("sec-fetch-dest");
-  if (dest) return dest === "document";
-  return (request.headers.get("accept") ?? "").includes("text/html");
+  // Only Sec-Fetch-Dest, which every current browser sends and servers do
+  // not: publishing services (Buffer) ask with browser-style Accept headers,
+  // and an Accept check handed them this page instead of the video.
+  return request.headers.get("sec-fetch-dest") === "document";
 }
 
 function escapeHtml(value: string): string {
@@ -99,18 +101,8 @@ function videoPage(segments: string[]): Response {
 
 async function redirectToFile(request: Request, params: Promise<{ path: string[] }>): Promise<Response> {
   const { path } = await params;
-  // Stored names only ever use [A-Za-z0-9._-], so decoding is a no-op for
-  // them; it is tolerant only so a stray encoding cannot throw.
-  const segments = (path ?? []).map((segment) => {
-    try {
-      return decodeURIComponent(segment);
-    } catch {
-      return segment;
-    }
-  });
-  if (segments.length < 3 || segments.some((segment) => !segment || segment === "." || segment === "..")) {
-    return new Response("Not found", { status: 404 });
-  }
+  const segments = storagePathFromSegments(path);
+  if (!segments) return new Response("Not found", { status: 404 });
   const query = new URL(request.url).searchParams;
   if (
     request.method === "GET" &&
